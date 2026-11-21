@@ -19,7 +19,11 @@ Assets/_Jogo/
   Settings/           Asset URP mobile, renderer e material de física da moto
   Tests/EditMode/     Testes NUnit das regras
   Tests/PlayMode/     Testes da cena (moto, corrida, semana, tempo das corridas, GPS, corredor de ônibus, meio-fio, chuva, trânsito, reclamação do cliente, conta bloqueada, oferta que expira), do grafo de ruas (sentido único) e capturas de tela
-Assets/ThirdParty/Kenney/   Modelos CC0 do Kenney (só os carros, semáforos antigos não são mais usados) com a License.txt de cada kit
+Assets/ThirdParty/Kenney/   Modelos CC0 do Kenney (as vans, os cones e as rodas da moto) com a License.txt de cada kit
+Assets/ThirdParty/Mixamo/    Os cinco personagens (FBX + textura de cor) com LICENSE.txt
+Assets/ThirdParty/Sketchfab/ Fiat Uno e Chevrolet Onix (CC-BY 4.0), com LICENSE.txt
+Assets/_Jogo/Personagens/    Prefabs dos personagens e o catálogo (gerados por PersonagensBuilder)
+Assets/_Jogo/Carros/         Prefabs e malhas dos carros reais (gerados por CarrosReais)
 Assets/ThirdParty/PolyHaven/ Texturas PBR e HDRIs CC0 do Poly Haven (ver "Arte fotográfica" abaixo)
 Assets/TextMesh Pro/        TMP Essential Resources (fonte LiberationSans SDF, OFL) importados do pacote com.unity.ugui
 Packages/             Dependências (URP, Input System, uGUI, test-framework)
@@ -81,23 +85,56 @@ Os modelos vêm dos kits do [Kenney](https://www.kenney.nl) (licença Creative C
 | Roads | só os cones de obra nos buracos (ruas, postes, semáforos, placas e caçambas agora são geradas por código) |
 | Commercial | não é mais usado (prédios gerados por `CityBuildings`) |
 | Suburban | não é mais usado (sobrados e árvores gerados por código) |
-| Car | carros estacionados, o trânsito (`TrafficLoop`) e as rodas (`wheel-default`) da moto |
+| Car | só as vans (`van`, `delivery`) que ainda sobram no trânsito e nos carros parados, e as rodas (`wheel-default`) da moto; Uno e Onix são modelos reais (ver "Personagens e carros reais") |
 
-Não existe moto nos kits: a moto e o piloto são procedurais (seção "Moto e piloto" abaixo); o Car Kit só fornece os carros.
+Não existe moto nos kits: a moto é procedural e o piloto é um personagem do Mixamo (seções "Moto e piloto" e "Personagens e carros reais" abaixo); o Car Kit só fornece as vans.
 
-## Moto e piloto (procedurais)
+## Moto e piloto
 
-Moto e entregador são malhas lisas geradas por código (`Assets/_Jogo/Scripts/Game/Moto/`), sem primitivas do Unity: `MotoMeshKit` (loft de superelipses, tubos de ponta arredondada, revolução de perfis), `MotoModel` (moto), `RiderModel` (piloto), `MotoCatalogo` (enums e parâmetros) e `MotoVisual` (montagem e animação). O `BikeFactory` só cria Rigidbody + collider (inalterados) e o `MotoVisual`; as malhas são salvas em `Scenes/SantoAmaro_MotoMalhas.asset`.
+A moto continua procedural (`Assets/_Jogo/Scripts/Game/Moto/`): `MotoMeshKit` (loft de superelipses, tubos de ponta arredondada, revolução de perfis), `MotoModel` (moto), `MotoCatalogo` (enums e parâmetros) e `MotoVisual` (montagem e animação). O piloto é um personagem do Mixamo (seção seguinte) com o capacete procedural de `RiderModel`. O `BikeFactory` só cria Rigidbody + collider (inalterados) e o `MotoVisual`; as malhas procedurais são salvas em `Scenes/SantoAmaro_MotoMalhas.asset`.
 
 - Modelos (`MotoModelo`, nomes fictícios): `Titan` = "Titã 160" (street clássica: farol redondo, tanque reto, banco longo, escape cromado) e `Twister` = "Tornado 250" (naked: carenagem angular com mini para-brisa, tanque com abas, banco escalonado, escape preto sob o motor). Cores: `MotoCor` (Vermelha, Preta, Azul, Branca).
-- Personagens (`Personagem`): Jefinho (padrão), Robsao, Marcao, SeuValdir, Camila; corpo e cores em `MotoCatalogo.Config`.
-- Trocar em jogo: `GetComponentInChildren<MotoVisual>().Configurar(MotoModelo.Twister, MotoCor.Azul, Personagem.Camila)` (remonta as malhas); `DefinirApp(cor, nome)` muda cor e texto do baú.
-- Materiais: 4 (`Moto_Paleta` e `Moto_Metal` leem cor e suavidade de uma paleta 64x1; `Moto_Luzes` com emissão por MaterialPropertyBlock; `Moto_Bau`). Cerca de 7,9 mil triângulos moto + piloto.
-- Animação (sem Animator): rodas giram, garfo/guidão esterçam no eixo inclinado, moto inclina pela velocidade x direção (só visual; piloto 35% a mais), parada tomba 5 graus e o pé esquerdo desce ao chão, lanterna acende ao frear. Braços e pernas usam IK de dois ossos até as manoplas e pedaleiras. O `ArcadeBikeController` só ganhou propriedades de leitura (`SteerInput`, `BrakeInput`, `Lean`).
+- Personagens (`Personagem`): Jefinho (padrão), Robsao, Marcao, SeuValdir, Camila; tamanho, postura e cor do capacete em `MotoCatalogo.Config`.
+- Trocar em jogo: `GetComponentInChildren<MotoVisual>().Configurar(MotoModelo.Twister, MotoCor.Azul, Personagem.Camila)` (remonta as malhas e o piloto); `DefinirApp(cor, nome)` muda cor e texto do baú.
+- Materiais da moto: 4 (`Moto_Paleta` e `Moto_Metal` leem cor e suavidade de uma paleta 64x1; `Moto_Luzes` com emissão por MaterialPropertyBlock; `Moto_Bau`), mais um material por personagem (`Materials/Personagens`). Moto: cerca de 5,9 mil triângulos; piloto: cerca de 22,5 mil (corpo decimado + capacete).
+- Animação (sem Animator): rodas giram, garfo/guidão esterçam no eixo inclinado, moto inclina pela velocidade x direção (só visual; piloto 35% a mais), parada tomba 5 graus e o pé esquerdo desce ao chão, lanterna acende ao frear. O piloto usa o `RiderRig` (ver abaixo). O `ArcadeBikeController` só ganhou propriedades de leitura (`SteerInput`, `BrakeInput`, `Lean`).
+
+## Personagens e carros reais
+
+### Personagens (Mixamo)
+
+Os cinco pilotos são personagens do [Mixamo](https://www.mixamo.com) (Adobe; uso livre de royalties em jogos), em `Assets/ThirdParty/Mixamo/<Nome>/` (FBX Humanoid + textura de cor em 1024, com um `LICENSE.txt`). Os FBX originais (50 MB cada, com texturas 4K embutidas) foram reduzidos para uns 2,5 MB: as texturas saíram do arquivo e só a de cor ficou ao lado, em 1024 (ASTC 6x6 no celular; o cabelo e os cílios não são usados).
+
+| Jogo | Mixamo | Roupa |
+| --- | --- | --- |
+| Jefinho | Bryce (`Ch42`) | camiseta vermelha, bermuda jeans |
+| Marcão | Brian (`Ch01`) | polo branca, jeans |
+| Seu Valdir | Pete (`Ch17`) | camisa, colete laranja refletivo, calça |
+| Camila | Sophie (`Ch02`) | blusa laranja, bermuda jeans |
+| Robsão | Lewis (`Ch12`) | camisa azul-petróleo, calça escura |
+
+- `PersonagensBuilder` (menu `Jogo > Gerar personagens`, também chamado pelo `BikeFactory`): tira o que o capacete esconde (cabelo, cílios, chapéu de obra, a cabeça do corpo) e o que a roupa cobre (tronco, coxas e pés do corpo nu), decima a malha com os pesos de osso (`MeshDecimator`, colapso de arestas com métrica quádrica) para uns 22 mil triângulos, usa um material URP/Lit por personagem e grava `Assets/_Jogo/Personagens/<Nome>.prefab` mais o `PersonagensCatalogo`, que o `MotoVisual` consulta na troca em jogo. O Robsão é engordado deformando a malha pelos pesos dos ossos (tronco +30%, barriga, braços +20%, coxas +18%).
+- `RiderRig` (sem Animator nem clipes): a cada quadro volta os ossos à pose T, inclina o tronco (três ossos) e faz IK de dois ossos até as manoplas e as pedaleiras; na parada o pé esquerdo desce ao chão. Os dedos ficam fechados em volta da manopola na pose de referência. O capacete procedural (`RiderModel.BuildHelmet`) fica preso ao osso da cabeça, no tamanho da cabeça do personagem.
+
+### Carros (Sketchfab, CC-BY 4.0)
+
+`CarrosReais` (Editor, menu `Jogo > Gerar carros reais`; o `CityBuilder` gera os que faltam) importa o Fiat Uno e o Chevrolet Onix, põe a escala real (3,69 m e 4,16 m de comprimento), origem no centro do chão e a frente em +Z, e grava `Assets/_Jogo/Carros/<Modelo>.prefab` (malhas em `<Modelo>_Malhas.asset`). Cada prefab tem um `LODGroup`: LOD 0 (até 15 mil triângulos: corpo + 4 rodas separadas, que giram em torno do próprio eixo, + placas) e LOD 1 (menos de 3 mil, uma malha só).
+
+- Uno: malha limpa, decimada direto; textura de cor 4096 reduzida para 1024 e recolorida por cor de pintura (as regiões da cor da carroceria trocam de cor, mantendo o sombreado). Onix: o modelo original tem 310 mil triângulos em camadas sobrepostas, com buracos e triângulos virados; mantemos a pele externa (detectada por voxels, orientada para fora e decimada) e, por baixo, um volume suave que tapa os buracos; vidros, faróis e lanternas são marcados por geometria.
+- Emblemas e placas: as placas originais e os emblemas somem (a malha do Uno não tem logotipo; no Onix as peças de emblema foram descartadas); cada carro leva placas fictícias no estilo Mercosul (textura gerada em código, fonte de pixels própria). Os carros nunca são chamados pela marca no jogo.
+- Pintura: `CarPaint.Sorteio` (branco 26%, prata 19%, preto 17%, vermelho 13%, azul-escuro 11%, grafite 14%) escolhe um dos materiais `Uno_Pintura_<cor>` / `Onix_Pintura_<cor>`; são 12 materiais de pintura mais 8 compartilhados.
+- Trânsito (`BuildTraffic`): 3 Unos, 4 Onix e a van de entrega do Kenney; carros parados: 9% vans do Kenney, o resto Uno e Onix. O collider é uma caixa do tamanho medido do LOD 0 (`CarrosReais.Limites`); a lógica do `TrafficLoop` não mudou.
+
+### Créditos
+
+- Personagens: Mixamo (Adobe), uso livre de royalties em jogos.
+- "Fiat Uno 2001" por B.M.A (Sketchfab), CC-BY 4.0: https://sketchfab.com/3d-models/fiat-uno-2001-cf685e42e7b54f348f6d5c145f1175dc
+- "chevrolet onix" por uzb_rx7 (Sketchfab), CC-BY 4.0: https://sketchfab.com/3d-models/chevrolet-onix-bfd798c2695847b28ab681d42abc7056
+- Licença CC-BY 4.0: https://creativecommons.org/licenses/by/4.0/. Os modelos foram alterados (decimação, remoção de emblemas e placas, recoloração, escala).
 
 ## Arte semi-realista (Poly Haven, CC0)
 
-A direção de arte é semi-realista: texturas fotográficas PBR, proporções de bairro paulistano, céu HDRI e pós-processamento. As texturas e os céus vêm do [Poly Haven](https://polyhaven.com) (licença CC0, em `Assets/ThirdParty/PolyHaven/LICENSE.txt`): asphalt_02, concrete_pavement, hexagonal_concrete_paving, concrete_floor_02, painted_plaster_wall, white_plaster_02, beige_wall_001, cracked_concrete_wall, concrete_wall_003, grey_plaster, red_brick_03, brick_4, clay_roof_tiles_02, corrugated_iron, rusty_metal_02, green_metal_rust, sparse_grass e os HDRIs kloofendal_48d_partly_cloudy, kloofendal_overcast e belfast_sunset. Os carros continuam sendo do Kenney (pintados em cores realistas por `CarPaint`).
+A direção de arte é semi-realista: texturas fotográficas PBR, proporções de bairro paulistano, céu HDRI e pós-processamento. As texturas e os céus vêm do [Poly Haven](https://polyhaven.com) (licença CC0, em `Assets/ThirdParty/PolyHaven/LICENSE.txt`): asphalt_02, concrete_pavement, hexagonal_concrete_paving, concrete_floor_02, painted_plaster_wall, white_plaster_02, beige_wall_001, cracked_concrete_wall, concrete_wall_003, grey_plaster, red_brick_03, brick_4, clay_roof_tiles_02, corrugated_iron, rusty_metal_02, green_metal_rust, sparse_grass e os HDRIs kloofendal_48d_partly_cloudy, kloofendal_overcast e belfast_sunset. Os carros do trânsito e os parados são modelos reais (Fiat Uno e Chevrolet Onix, Sketchfab; ver "Personagens e carros reais"); só as vans seguem do Kenney, pintadas por `CarPaint`.
 
 ### Pipeline de materiais
 

@@ -4,15 +4,22 @@ using UnityEngine;
 namespace Entregador.Game
 {
     /// <summary>
-    /// Visual da moto e do piloto: monta as malhas procedurais (MotoModel e RiderModel) e anima sem Animator:
-    /// rodas giram com a velocidade, garfo e guidão esterçam, o piloto inclina um pouco mais que a moto, parada a moto
-    /// tomba alguns graus e o pé esquerdo desce ao chão (braços e pernas por IK de dois ossos). Lanterna acende ao frear.
+    /// Visual da moto e do piloto: monta a moto procedural (MotoModel), o personagem do Mixamo (PersonagensCatalogo) e o capacete
+    /// procedural (RiderModel), e anima sem Animator: rodas giram com a velocidade, garfo e guidão esterçam, o piloto inclina um
+    /// pouco mais que a moto, parada a moto tomba alguns graus e o pé esquerdo desce ao chão (RiderRig: tronco inclinado e IK de
+    /// dois ossos nos braços e pernas). Lanterna acende ao frear.
     /// A física não é tocada: só lê o estado do ArcadeBikeController.
     /// </summary>
     public sealed class MotoVisual : MonoBehaviour
     {
         /// <summary>Altura da raiz da física abaixo do chão visual (o collider da moto começa 5 cm acima da origem do Rigidbody).</summary>
         public const float AlturaDoChao = 0.05f;
+
+        /// <summary>Altura do osso do quadril (centro da pélvis do Mixamo) acima do ponto Quadril da moto.</summary>
+        private const float PilotoAltura = 0.04f;
+
+        /// <summary>Quanto o centro do capacete avança em relação ao meio da cabeça, em fração do comprimento da cabeça.</summary>
+        private const float CapaceteFrente = 0.1f;
 
         [SerializeField] private MotoModelo _modelo = MotoModelo.Titan;
         [SerializeField] private MotoCor _cor = MotoCor.Vermelha;
@@ -30,12 +37,12 @@ namespace Entregador.Game
         [SerializeField] private Transform _garfo;
         [SerializeField] private Transform _rodaFrente;
         [SerializeField] private Transform _rodaTras;
+        [SerializeField] private PersonagensCatalogo _catalogo;
         [SerializeField] private Transform _piloto;
+        [SerializeField] private Transform _capacete;
+        [SerializeField] private RiderRig _rig = new RiderRig();
         [SerializeField] private Transform _manopolaEsq;
         [SerializeField] private Transform _manopolaDir;
-        [SerializeField] private Transform[] _braco = new Transform[4];
-        [SerializeField] private Transform[] _perna = new Transform[4];
-        [SerializeField] private Transform[] _pes = new Transform[2];
         [SerializeField] private Renderer _farolRenderer;
         [SerializeField] private Renderer _lanternaRenderer;
         [SerializeField] private Renderer _bauRenderer;
@@ -44,8 +51,10 @@ namespace Entregador.Game
         [SerializeField] private Vector3 _eixoDirecao = Vector3.up;
         [SerializeField] private Vector3 _pedaleiraEsq;
         [SerializeField] private Vector3 _pedaleiraDir;
-        [SerializeField] private float[] _comprimentos = new float[6];
         [SerializeField] private int _triangulos;
+        [SerializeField] private int _triangulosPiloto;
+        [SerializeField] private float _inclinacaoDoTronco = 14f;
+        [SerializeField] private float _inclinacaoDaCabeca;
 
         [Header("Animação")]
         [SerializeField] private float _esterceMaximo = 24f;
@@ -68,10 +77,21 @@ namespace Entregador.Game
         public Personagem Personagem => _personagem;
         public int Triangulos => _triangulos;
 
+        /// <summary>Triângulos só do piloto (personagem do Mixamo, já decimado, mais o capacete).</summary>
+        public int TriangulosPiloto => _triangulosPiloto;
+
+        public RiderRig Rig => _rig;
+
         /// <summary>Liga o visual à moto de física (lê velocidade, direção, inclinação e freio).</summary>
         public void Ligar(ArcadeBikeController moto)
         {
             _moto = moto;
+        }
+
+        /// <summary>Entrega o catálogo dos modelos dos personagens (BikeFactory; a troca em jogo usa o mesmo).</summary>
+        public void DefinirCatalogo(PersonagensCatalogo catalogo)
+        {
+            _catalogo = catalogo;
         }
 
         /// <summary>Entrega os materiais-base (usados como molde nas remontagens em jogo).</summary>
@@ -86,6 +106,7 @@ namespace Entregador.Game
         public void CopiarMateriaisDe(MotoVisual outro)
         {
             DefinirMateriais(outro._matPaleta, outro._matMetal, outro._matLuzes, outro._matBau);
+            _catalogo = outro._catalogo;
         }
 
         /// <summary>Troca moto, cor e personagem e remonta as malhas. Para a tela de seleção (rodada futura).</summary>
@@ -153,8 +174,20 @@ namespace Entregador.Game
             var pal = new MotoPalette();
             MotoParts m = MotoModel.Build(_modelo, _cor, pal);
             PersonagemConfig c = MotoCatalogo.Config(_personagem);
-            RiderParts r = RiderModel.Build(c, pal);
-            _triangulos = m.Triangulos + r.Triangulos;
+            _inclinacaoDoTronco = c.Inclinacao;
+            _inclinacaoDaCabeca = c.CabecaFrente * 160f;
+
+            _raizModelo = new GameObject("Modelo").transform;
+            _raizModelo.SetParent(transform, false);
+            _raizModelo.localPosition = new Vector3(0f, AlturaDoChao, 0f);
+            _raioRodaFrente = m.RaioFrente;
+            _raioRodaTras = m.RaioTras;
+            _eixoDirecao = m.EixoDirecao;
+            _pedaleiraEsq = m.PedaleiraEsq;
+            _pedaleiraDir = m.PedaleiraDir;
+
+            // Piloto (personagem do Mixamo + capacete), antes dos materiais porque o capacete usa a mesma paleta da moto.
+            MontarPiloto(m, c, pal);
 
             Texture2D texture = pal.BuildTexture();
             Material paleta = _matPaleta;
@@ -169,16 +202,11 @@ namespace Entregador.Game
             paleta.SetTexture("_BaseMap", texture);
             metal.SetTexture("_BaseMap", texture);
             Material[] dois = { paleta, metal };
-            Material[] um = { paleta };
 
-            _raizModelo = new GameObject("Modelo").transform;
-            _raizModelo.SetParent(transform, false);
-            _raizModelo.localPosition = new Vector3(0f, AlturaDoChao, 0f);
-            _raioRodaFrente = m.RaioFrente;
-            _raioRodaTras = m.RaioTras;
-            _eixoDirecao = m.EixoDirecao;
-            _pedaleiraEsq = m.PedaleiraEsq;
-            _pedaleiraDir = m.PedaleiraDir;
+            if (_capacete != null)
+            {
+                _capacete.GetComponent<MeshRenderer>().sharedMaterials = new[] { paleta };
+            }
 
             Parte("Quadro", _raizModelo, m.Quadro, dois, Vector3.zero);
             _rodaTras = Parte("RodaTras", _raizModelo, m.RodaTras, dois, m.EixoTras).transform;
@@ -199,36 +227,70 @@ namespace Entregador.Game
             Texto("LogoTras", _raizModelo, new Vector3(0f, badgeY, m.BauCentro.z - half - 0.0045f), Vector3.back, 0.27f, 0.13f, _nomeDoApp);
             Texto("Placa", _raizModelo, m.PlacaCentro + new Vector3(0f, -0.004f, -0.0015f), Vector3.back, 0.37f, 0.095f, "BRA2E19");
 
-            // Piloto.
-            _piloto = Parte("Piloto", _raizModelo, r.Tronco, um, m.Quadril + new Vector3(0f, 0f, c.QuadrilZ)).transform;
-            _comprimentos = new[] { r.CompBracoSuperior, r.CompAntebraco, r.CompCoxa, r.CompCanela, r.CompLuva, r.BolaDoPe };
-            _braco = new Transform[4];
-            _perna = new Transform[4];
-            _pes = new Transform[2];
-
-            for (int side = 0; side < 2; side++)
-            {
-                string s = side == 0 ? "Esq" : "Dir";
-                _braco[side * 2] = Parte("BracoSup" + s, _raizModelo, r.BracoSuperior, um, Vector3.zero).transform;
-                _braco[side * 2 + 1] = Parte("Antebraco" + s, _raizModelo, r.Antebraco, um, Vector3.zero).transform;
-                _perna[side * 2] = Parte("Coxa" + s, _raizModelo, r.Coxa, um, Vector3.zero).transform;
-                _perna[side * 2 + 1] = Parte("Canela" + s, _raizModelo, r.Canela, um, Vector3.zero).transform;
-                _pes[side] = Parte("Tenis" + s, _raizModelo, r.Tenis, um, Vector3.zero).transform;
-            }
-
-            _ombroEsq = r.OmbroEsq;
-            _ombroDir = r.OmbroDir;
-            _quadrilEsq = r.QuadrilEsq;
-            _quadrilDir = r.QuadrilDir;
             _pesoFarol = _pesoLanterna = -1f;
             DefinirApp(_corDoBau, _nomeDoApp);
             Posicionar(0f);
         }
 
-        [SerializeField] private Vector3 _ombroEsq;
-        [SerializeField] private Vector3 _ombroDir;
-        [SerializeField] private Vector3 _quadrilEsq;
-        [SerializeField] private Vector3 _quadrilDir;
+        /// <summary>Instancia o personagem pelo pivô no quadril, monta o esqueleto (RiderRig) e prende o capacete à cabeça.</summary>
+        private void MontarPiloto(MotoParts m, PersonagemConfig c, MotoPalette pal)
+        {
+            _piloto = Vazio("Piloto", _raizModelo, m.Quadril + new Vector3(0f, PilotoAltura, c.QuadrilZ));
+            _capacete = null;
+            _rig = new RiderRig();
+            _triangulosPiloto = 0;
+            GameObject prefab = _catalogo != null ? _catalogo.Modelo(_personagem) : null;
+
+            if (prefab == null)
+            {
+                _triangulos = m.Triangulos;
+
+                return;
+            }
+
+            GameObject body = Instantiate(prefab, _piloto);
+            body.name = "Corpo";
+            body.transform.localPosition = Vector3.zero;
+            body.transform.localRotation = Quaternion.identity;
+            body.transform.localScale = Vector3.one;
+            var animator = body.GetComponent<Animator>();
+
+            if (animator != null)
+            {
+                animator.enabled = false;
+            }
+
+            _rig = RiderRig.Montar(body.transform);
+            Vector3 hipsLocal = body.transform.InverseTransformPoint(_rig.Pegar(Osso.Hips).position);
+            body.transform.localScale = Vector3.one * c.Escala;
+            body.transform.localPosition = -hipsLocal * c.Escala;
+            int triangles = 0;
+
+            foreach (SkinnedMeshRenderer renderer in body.GetComponentsInChildren<SkinnedMeshRenderer>())
+            {
+                triangles += renderer.sharedMesh.triangles.Length / 3;
+                renderer.updateWhenOffscreen = true;
+            }
+
+            // Capacete: no tamanho da cabeça do personagem, preso ao osso da cabeça (gira junto, sempre de frente).
+            Transform head = _rig.Cabeca;
+            Transform top = _rig.Pegar(Osso.HeadTop);
+            float headLength = Vector3.Distance(head.position, top.position);
+            float helmetScale = Mathf.Clamp(headLength / 0.25f, 0.78f, 1.1f);
+            Mesh helmet = RiderModel.BuildHelmet(c, pal, helmetScale, out int helmetTriangles);
+            _capacete = Vazio("Capacete", _raizModelo, Vector3.zero);
+            _capacete.position = Vector3.Lerp(head.position, top.position, 0.5f) + body.transform.forward * (headLength * CapaceteFrente);
+            _capacete.rotation = body.transform.rotation;
+            _capacete.gameObject.AddComponent<MeshFilter>().sharedMesh = helmet;
+            _capacete.gameObject.AddComponent<MeshRenderer>();
+            _capacete.SetParent(head, true);
+
+            // O capacete herda a escala do corpo pelo osso; desfaz para ficar no tamanho calculado.
+            _capacete.localScale = Vector3.one;
+            _capacete.localScale = new Vector3(1f / _capacete.lossyScale.x, 1f / _capacete.lossyScale.y, 1f / _capacete.lossyScale.z);
+            _triangulosPiloto = triangles + helmetTriangles;
+            _triangulos = m.Triangulos + _triangulosPiloto;
+        }
 
         private static void Apagar(GameObject go)
         {
@@ -331,48 +393,20 @@ namespace Entregador.Game
             AtualizarLuz(_farolRenderer, ref _pesoFarol, headOn, new Color(1f, 0.96f, 0.82f), new Color(1f, 0.93f, 0.7f) * 2.2f, new Color(1f, 0.96f, 0.82f));
             AtualizarLuz(_lanternaRenderer, ref _pesoLanterna, tailOn, new Color(0.45f, 0.02f, 0.02f), new Color(1f, 0.05f, 0.03f) * 3.5f, new Color(0.55f, 0.02f, 0.02f), new Color(1f, 0.1f, 0.05f) * 0.5f);
 
-            // Braços e pernas.
+            // Braços e pernas (IK no esqueleto do personagem).
             Transform root = _raizModelo;
-            Transform torso = _piloto;
-            float la = _comprimentos[0];
-            float lb = _comprimentos[1];
-            float lt = _comprimentos[2];
-            float ls = _comprimentos[3];
-            float lg = _comprimentos[4];
-            float ball = _comprimentos[5];
-
-            Vector3 gripL = _manopolaEsq.position;
-            Vector3 gripR = _manopolaDir.position;
-
-            for (int side = 0; side < 2; side++)
-            {
-                float sx = side == 0 ? -1f : 1f;
-                Vector3 shoulder = torso.TransformPoint(side == 0 ? _ombroEsq : _ombroDir);
-                Vector3 grip = side == 0 ? gripL : gripR;
-                Vector3 dirToHand = (grip - shoulder).normalized;
-                Vector3 wrist = grip - dirToHand * (lg * 0.55f);
-                Vector3 pole = root.TransformDirection(new Vector3(sx * 0.7f, -0.7f, -0.45f));
-                TwoBone(_braco[side * 2], _braco[side * 2 + 1], shoulder, wrist, la, lb, pole);
-
-                Vector3 hip = torso.TransformPoint(side == 0 ? _quadrilEsq : _quadrilDir);
-                Vector3 peg = root.TransformPoint(side == 0 ? _pedaleiraEsq : _pedaleiraDir);
-                Vector3 ankle = peg + root.TransformDirection(new Vector3(0f, 0.095f, -ball));
-                Quaternion footRot = root.rotation * Quaternion.Euler(10f, 0f, 0f);
-
-                if (side == 0)
-                {
-                    // Pé esquerdo no chão quando parado.
-                    Vector3 groundXz = root.position + root.TransformDirection(new Vector3(_pedaleiraEsq.x - 0.1f, 0f, _pedaleiraEsq.z + 0.02f - ball));
-                    Vector3 ground = new Vector3(groundXz.x, root.position.y + 0.085f + 0.004f, groundXz.z);
-                    ankle = Vector3.Lerp(ankle, ground, stopEase);
-                    float yaw = root.eulerAngles.y;
-                    footRot = Quaternion.Slerp(footRot, Quaternion.Euler(0f, yaw, 0f), stopEase);
-                }
-
-                Vector3 legPole = root.TransformDirection(new Vector3(sx * 0.3f, 0.35f, 1f));
-                Vector3 end = TwoBone(_perna[side * 2], _perna[side * 2 + 1], hip, ankle, lt, ls, legPole);
-                _pes[side].SetPositionAndRotation(end, footRot);
-            }
+            Vector3 groundL = root.TransformPoint(new Vector3(_pedaleiraEsq.x - 0.1f, 0f, _pedaleiraEsq.z + 0.02f));
+            groundL.y = root.position.y;
+            _rig.Posicionar(
+                root.rotation,
+                _inclinacaoDoTronco,
+                _inclinacaoDaCabeca,
+                _manopolaEsq.position,
+                _manopolaDir.position,
+                root.TransformPoint(_pedaleiraEsq),
+                root.TransformPoint(_pedaleiraDir),
+                groundL,
+                stopEase);
         }
 
         private void AtualizarLuz(Renderer renderer, ref float cache, float on, Color baseOff, Color emissionOn, Color baseOn, Color? emissionOff = null)
@@ -388,24 +422,6 @@ namespace Entregador.Game
             _bloco.SetColor(BaseColor, on > 0.5f ? baseOn : baseOff);
             _bloco.SetColor(EmissionColor, on > 0.5f ? emissionOn : (emissionOff ?? Color.black));
             renderer.SetPropertyBlock(_bloco);
-        }
-
-        /// <summary>IK analítico de dois ossos. As malhas apontam em +Z. Devolve o ponto alcançado pela ponta.</summary>
-        private static Vector3 TwoBone(Transform upper, Transform lower, Vector3 root, Vector3 target, float a, float b, Vector3 pole)
-        {
-            Vector3 d = target - root;
-            float dist = Mathf.Clamp(d.magnitude, Mathf.Abs(a - b) + 0.01f, (a + b) * 0.998f);
-            Vector3 dir = d.sqrMagnitude < 1e-8f ? Vector3.down : d.normalized;
-            float x = (a * a - b * b + dist * dist) / (2f * dist);
-            float h = Mathf.Sqrt(Mathf.Max(0f, a * a - x * x));
-            Vector3 perp = pole - dir * Vector3.Dot(pole, dir);
-            perp = perp.sqrMagnitude < 1e-6f ? Vector3.up : perp.normalized;
-            Vector3 elbow = root + dir * x + perp * h;
-            Vector3 end = root + dir * dist;
-            upper.SetPositionAndRotation(root, Quaternion.LookRotation(elbow - root, perp));
-            lower.SetPositionAndRotation(elbow, Quaternion.LookRotation(end - elbow, perp));
-
-            return end;
         }
 
         /// <summary>Cria uma moto só visual (sem física) para vitrines e capturas; copia os materiais de uma moto existente.</summary>

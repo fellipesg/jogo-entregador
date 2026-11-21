@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Entregador.Editor
 {
-    /// <summary>Monta a moto: Rigidbody e collider (inalterados), o visual procedural (MotoVisual) e os componentes de jogo.</summary>
+    /// <summary>Monta a moto: Rigidbody e collider (inalterados), o visual (MotoVisual: moto procedural, personagem do Mixamo e capacete) e os componentes de jogo.</summary>
     public static class BikeFactory
     {
         private const string MeshesPath = "Assets/_Jogo/Scenes/SantoAmaro_MotoMalhas.asset";
@@ -37,10 +37,11 @@ namespace Entregador.Editor
             Transform visual = new GameObject("Visual").transform;
             visual.SetParent(root.transform, false);
 
-            // Visual procedural (MotoModel/RiderModel): 4 materiais (paleta, metal, luzes e o baú do app).
+            // Visual (moto procedural, piloto do Mixamo): 4 materiais (paleta, metal, luzes e o baú do app).
             var motoVisual = visual.gameObject.AddComponent<MotoVisual>();
             motoVisual.DefinirMateriais(PaletteMaterial("Moto_Paleta", 0f), PaletteMaterial("Moto_Metal", 0.9f), LightMaterial(), CityMaterials.Lit("Moto_Bau", Color.white, 0.35f));
             AssetDatabase.DeleteAsset(PalettePath);
+            motoVisual.DefinirCatalogo(PersonagensBuilder.Garantir());
             motoVisual.Configurar(modelo, cor, personagem);
             SaveGenerated(motoVisual);
 

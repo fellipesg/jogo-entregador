@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4faa5d11b530442718ca9b7e072c0e1b, type: 3}
+  m_Name: PersonagensCatalogo
+  m_EditorClassIdentifier: Entregador.Game::Entregador.Game.PersonagensCatalogo
+  _modelos:
+  - {fileID: 6262869608783966792, guid: 620aefb6c02f4470bb648d7215ef238f, type: 3}
+  - {fileID: 6528246138004725024, guid: 4160f94fc4ce74fa2abadd2d7fd29011, type: 3}
+  - {fileID: 8893804927298005005, guid: 384052132423d4e7aa66251644e65a62, type: 3}
+  - {fileID: 8327696838094557465, guid: ffa720365e7db4ed9b73390b669c0000, type: 3}
+  - {fileID: 8566434928202460812, guid: 1178e58998f494c1b9130f2ec1c821b3, type: 3}

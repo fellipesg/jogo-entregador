@@ -1,0 +1,3 @@
+Personagem 'Jefinho' (Mixamo Ch42).
+Personagens do Mixamo (Adobe), uso livre de royalties em jogos.
+O FBX foi reduzido: as texturas embutidas (4K) foram retiradas e as de cor, redimensionadas para 1024, ficam ao lado.

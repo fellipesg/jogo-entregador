@@ -1,0 +1,5 @@
+"Fiat Uno 2001" por B.M.A (Sketchfab)
+https://sketchfab.com/3d-models/fiat-uno-2001-cf685e42e7b54f348f6d5c145f1175dc
+Licença: Creative Commons Atribuição 4.0 (CC-BY 4.0), https://creativecommons.org/licenses/by/4.0/
+Alterações: malha decimada em LODs, logotipos e placa removidos, cor da pintura recolorida, escala e eixos ajustados.
+As texturas originais (4096) foram reduzidas: aqui ficam só a cor base (2048) e a roda (512).

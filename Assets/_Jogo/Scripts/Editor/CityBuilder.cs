@@ -28,6 +28,7 @@ namespace Entregador.Editor
         public static void Build()
         {
             RenderSetup.Apply();
+            CarrosReais.Garantir();
             TmpSetup.EnsureFallbackFont();
             OsmMap map = OsmMap.Load(OsmMap.DataPath);
 

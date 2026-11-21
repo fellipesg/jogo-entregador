@@ -10,7 +10,8 @@ namespace Entregador.Editor
     /// </summary>
     public static partial class CityBuilder
     {
-        private static readonly string[] ParkedCarModels = { "sedan", "hatchback-sports", "suv", "taxi", "van", "delivery", "truck", "sedan", "hatchback-sports" };
+        /// <summary>Carros parados: Uno e Onix reais (em geral) e, de vez em quando, uma van do Kenney (não temos van real).</summary>
+        private static readonly string[] ParkedKenneyVans = { "van", "delivery" };
 
         private sealed class PoleInfo
         {
@@ -696,11 +697,20 @@ namespace Entregador.Editor
                         continue;
                     }
 
-                    string model = ParkedCarModels[random.Next(ParkedCarModels.Length)];
-                    int paint = random.Next(CarPaint.Colors.Length);
+                    double kind = random.NextDouble();
+                    int paint = CarPaint.Sorteio(random);
                     float yaw = Mathf.Atan2(dir.x, dir.y) * Mathf.Rad2Deg + ((float)random.NextDouble() - 0.5f) * 4f;
                     parked.Add(position);
-                    CityPieces.Car(parent, model, position, yaw, true, paint);
+
+                    if (kind < 0.09)
+                    {
+                        CityPieces.Car(parent, ParkedKenneyVans[random.Next(ParkedKenneyVans.Length)], position, yaw, true, paint);
+                    }
+                    else
+                    {
+                        CarrosReais.Modelo real = kind < 0.45 ? CarrosReais.Modelo.Uno : CarrosReais.Modelo.Onix;
+                        CarrosReais.Instanciar(parent, real, position, yaw, paint, random.Next(CarrosReais.PlacaCount), true);
+                    }
                 }
             });
         }
@@ -829,9 +839,10 @@ namespace Entregador.Editor
         private static void BuildTraffic(Transform parent, Transform player)
         {
             List<List<int>> loops = _trafficLoops;
-            string[] models = { "taxi", "sedan", "van", "suv", "hatchback-sports", "delivery", "sedan", "truck" };
+            // Uno e Onix reais; a van de entrega ainda é do Kenney.
+            string[] models = { "uno", "onix", "onix", "uno", "onix", "delivery", "uno", "onix" };
             float[] speeds = { 8f, 7f, 9f, 8f, 7.5f, 8.5f, 7f, 9f };
-            int[] paints = { 0, 1, 2, 3, 4, 5, 0, 1 };
+            int[] paints = { 0, 2, 1, 3, 0, 1, 4, 5 };
             var cars = new List<(List<int> loop, float fraction)>();
 
             for (int k = 0; k < TrafficCars; k++)
@@ -880,12 +891,24 @@ namespace Entregador.Editor
                 var car = new GameObject("Transito_" + models[k] + "_" + k);
                 car.transform.SetParent(parent, false);
                 car.transform.SetPositionAndRotation(start, Quaternion.Euler(0f, yaw, 0f));
-                Bounds bounds = CityPieces.ModelBounds(Kit.CarKit, models[k]);
                 var box = car.AddComponent<BoxCollider>();
-                box.center = bounds.center * CityPieces.CarScale;
-                box.size = bounds.size * CityPieces.CarScale;
                 car.AddComponent<Rigidbody>().isKinematic = true;
-                CityPieces.Car(car.transform, models[k], start, yaw, false, paints[k]).name = "Carro";
+
+                if (models[k] == "delivery")
+                {
+                    Bounds bounds = CityPieces.ModelBounds(Kit.CarKit, models[k]);
+                    box.center = bounds.center * CityPieces.CarScale;
+                    box.size = bounds.size * CityPieces.CarScale;
+                    CityPieces.Car(car.transform, models[k], start, yaw, false, paints[k]).name = "Carro";
+                }
+                else
+                {
+                    CarrosReais.Modelo real = models[k] == "uno" ? CarrosReais.Modelo.Uno : CarrosReais.Modelo.Onix;
+                    Bounds bounds = CarrosReais.Limites(real);
+                    box.center = bounds.center;
+                    box.size = bounds.size;
+                    CarrosReais.Instanciar(car.transform, real, start, yaw, paints[k], k, false).name = "Carro";
+                }
                 car.AddComponent<Entregador.Game.TrafficLoop>().Configure(corners, speeds[k], player, segment);
             }
         }

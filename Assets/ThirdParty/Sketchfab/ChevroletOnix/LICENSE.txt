@@ -1,0 +1,4 @@
+"chevrolet onix" por uzb_rx7 (Sketchfab)
+https://sketchfab.com/3d-models/chevrolet-onix-bfd798c2695847b28ab681d42abc7056
+Licença: Creative Commons Atribuição 4.0 (CC-BY 4.0), https://creativecommons.org/licenses/by/4.0/
+Alterações: só a casca externa foi mantida, orientação dos triângulos corrigida, malha decimada em LODs, emblemas e placa removidos, materiais trocados por materiais URP simples com pintura variável.

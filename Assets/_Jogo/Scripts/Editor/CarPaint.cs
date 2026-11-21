@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Entregador.Editor
 {
     /// <summary>
-    /// Pinta os carros do Kenney em cores realistas (branco, prata, preto, vermelho, azul-escuro, grafite). O kit usa um colormap
+    /// Cores realistas dos carros: o sorteio ponderado e a pintura dos carros do Kenney (vans) que ainda sobram; os carros reais (CarrosReais) usam as mesmas cores. Pinta os carros do Kenney (branco, prata, preto, vermelho, azul-escuro, grafite). O kit usa um colormap
     /// de gradientes; aqui cada variante é uma cópia dele em que as células saturadas (a carroceria) trocam de cor e as cinzas,
     /// brancas e claras (vidros, rodas, faróis) ficam como estavam. Um material por cor, compartilhado por todos os carros.
     /// </summary>
@@ -20,6 +20,27 @@ namespace Entregador.Editor
             ("AzulEscuro", new Color(0.07f, 0.13f, 0.36f)),
             ("Grafite", new Color(0.26f, 0.27f, 0.29f)),
         };
+
+        /// <summary>Pesos do sorteio (mistura de São Paulo): branco, prata, preto, vermelho, azul-escuro e grafite; cerca de 60% branco, prata e preto.</summary>
+        private static readonly float[] Weights = { 0.26f, 0.19f, 0.17f, 0.13f, 0.11f, 0.14f };
+
+        /// <summary>Sorteia o índice de uma cor com a distribuição realista.</summary>
+        public static int Sorteio(System.Random random)
+        {
+            float roll = (float)random.NextDouble();
+
+            for (int i = 0; i < Weights.Length; i++)
+            {
+                roll -= Weights[i];
+
+                if (roll <= 0f)
+                {
+                    return i;
+                }
+            }
+
+            return 0;
+        }
 
         private const string Folder = "Assets/_Jogo/Materials/Carros";
 

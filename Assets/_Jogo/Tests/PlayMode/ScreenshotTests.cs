@@ -336,7 +336,9 @@ namespace Entregador.Game.Tests
             yield return new WaitForSeconds(0.8f);
             MotoVisual visual = Flow.Bike.GetComponentInChildren<MotoVisual>();
             Assert.IsNotNull(visual, "A moto não tem MotoVisual.");
-            File.AppendAllText(Path.Combine(dir, "stats.txt"), $"moto+piloto triangulos={visual.Triangulos}\n");
+            File.AppendAllText(Path.Combine(dir, "stats.txt"), $"moto+piloto triangulos={visual.Triangulos} (piloto com capacete={visual.TriangulosPiloto})\n");
+            Assert.Greater(visual.TriangulosPiloto, 1000, "O piloto deveria ser o personagem do Mixamo.");
+            Assert.LessOrEqual(visual.TriangulosPiloto, 25000, "O piloto passou do orçamento de triângulos.");
 
             // Vista normal de trás, parada.
             Save(dir, "m0_tras_normal.png", main, false);
@@ -352,6 +354,14 @@ namespace Entregador.Game.Tests
             Look(main, p + new Vector3(3.6f, 1.05f, 0f), c);
             yield return null;
             Save(dir, "m2_lateral_titan.png", main, false);
+
+            // Parada, do lado esquerdo: o pé esquerdo no chão.
+            Look(main, p + new Vector3(-2.2f, 1.5f, 2.4f), c);
+            yield return null;
+            Save(dir, "m1b_tres_quartos_esquerdo_pe_no_chao.png", main, false);
+            Look(main, p + new Vector3(-3.6f, 1.05f, 0f), c);
+            yield return null;
+            Save(dir, "m2b_lateral_esquerda.png", main, false);
 
             Look(main, p + new Vector3(-2.4f, 1.7f, -3f), c);
             yield return null;
@@ -415,6 +425,88 @@ namespace Entregador.Game.Tests
             Look(main, origin + new Vector3(-2.2f, 1.2f, 4.2f), origin + new Vector3(0f, 0.95f, 1.5f));
             yield return null;
             Save(dir, "m9_personagens_proximo.png", main, false);
+            follow.enabled = true;
+        }
+
+        /// <summary>Procura um carro real estacionado (o prefab leva o nome do modelo; o trânsito fica sob "Transito_").</summary>
+        private static Transform FindParkedCar(string modelName, Vector3 near)
+        {
+            Transform best = null;
+            float bestDistance = float.MaxValue;
+
+            foreach (Transform t in Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
+            {
+                if (t.name != modelName || t.parent == null || t.parent.name.StartsWith("Transito_") || t.GetComponent<BoxCollider>() == null)
+                {
+                    continue;
+                }
+
+                float d = Vector3.Distance(t.position, near);
+
+                if (d < bestDistance)
+                {
+                    bestDistance = d;
+                    best = t;
+                }
+            }
+
+            return best;
+        }
+
+        /// <summary>Closes dos carros reais (Uno e Onix) estacionados, com a moto ao lado para dar a escala, de frente e de trás.</summary>
+        [UnityTest]
+        public IEnumerator CaptureCarros()
+        {
+            string dir = Dir;
+            Camera main = Camera.main;
+            var follow = main.GetComponent<FollowCamera>();
+            StartDryWeek();
+            Flow.Ui.SetHudVisible(false);
+            follow.enabled = false;
+            float originalFov = main.fieldOfView;
+            Flow.Bike.SetLocked(true);
+            Vector3 anchor = View("residencial").Position;
+            int index = 1;
+
+            foreach (string model in new[] { "Uno", "Onix" })
+            {
+                Transform car = FindParkedCar(model, anchor);
+                Assert.IsNotNull(car, $"Nenhum {model} estacionado na cena.");
+                Vector3 p = car.position;
+                Vector3 f = car.forward;
+                Vector3 r = car.right;
+                int tris = 0;
+
+                foreach (MeshFilter mf in car.GetComponentsInChildren<MeshFilter>())
+                {
+                    if (mf.transform.parent != null && mf.transform.parent.name == "LOD0")
+                    {
+                        tris += mf.sharedMesh.triangles.Length / 3;
+                    }
+                }
+
+                File.AppendAllText(Path.Combine(dir, "stats.txt"), $"carro {model}: triangulos LOD0={tris} (corpo + 4 rodas + placas)\n");
+                Assert.LessOrEqual(tris, 15500, $"{model}: o LOD 0 passou de 15 mil triângulos.");
+
+                // A moto uns 3,5 m à frente do carro, olhando para ele, para comparar o tamanho.
+                Vector3 bikeSpot = p + f * 5.2f + r * 0.2f;
+                Flow.Bike.Teleport(new Vector3(bikeSpot.x, 0.1f, bikeSpot.z), Mathf.Atan2(-f.x, -f.z) * Mathf.Rad2Deg);
+                yield return null;
+                yield return new WaitForSeconds(0.3f);
+                Look(main, p + f * 6.6f + r * 4.2f + Vector3.up * 1.5f, p + f * 1.2f + Vector3.up * 0.7f);
+                main.fieldOfView = 42f;
+                yield return null;
+                Save(dir, $"n{index}a_{model.ToLowerInvariant()}_frente_com_moto.png", main, false);
+                Look(main, p - f * 5.4f - r * 2.8f + Vector3.up * 1.3f, p + Vector3.up * 0.7f);
+                yield return null;
+                Save(dir, $"n{index}b_{model.ToLowerInvariant()}_traseira.png", main, false);
+                Look(main, p + f * 3.4f - r * 3.2f + Vector3.up * 1.1f, p + Vector3.up * 0.65f);
+                yield return null;
+                Save(dir, $"n{index}c_{model.ToLowerInvariant()}_tres_quartos.png", main, false);
+                index++;
+            }
+
+            main.fieldOfView = originalFov;
             follow.enabled = true;
         }
 
