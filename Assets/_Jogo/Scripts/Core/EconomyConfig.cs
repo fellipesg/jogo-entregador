@@ -16,6 +16,9 @@ namespace Entregador.Core
         public Money Fine = Money.Reais(50);
         public Money Raincoat = Money.Reais(30);
 
+        /// <summary>Trânsito, moto bob, blitz e pátio.</summary>
+        public TransitoConfig Transito = new TransitoConfig();
+
         public int DaysPerWeek = 7;
         public int RainyDaysPerWeek = 2;
 

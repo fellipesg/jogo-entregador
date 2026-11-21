@@ -147,6 +147,16 @@ A interface usa TextMeshPro. Os "TMP Essential Resources" foram importados do pa
 
 O assembly `Entregador.Core` não referencia a Unity (`noEngineReferences`), então as regras podem ser testadas sem abrir cenas. Os valores de economia ficam em `EconomyConfig` e `AppConfig`.
 
+## Regras: moto, CNH e trânsito (Core)
+
+Perfil inicial (`PerfilInicial`, passado ao `GameSession`): moto **alugada** (caução + aluguel semanal, placa legal) ou moto **bob** (entrada R$ 150 + parcela informal de R$ 100/semana por 8 semanas, sem documentos) e se o jogador **tem CNH** categoria A. Padrão: alugada com CNH. Números em `EconomyConfig.Transito` (`TransitoConfig`); valores e pontos das infrações em `CodigoTransito` (tabela do CTB: velocidade até 20% R$ 130,16/4 pts, 20-50% R$ 195,23/5 pts, acima de 50% R$ 880,41/7 pts + suspensão, contramão, faixa de ônibus e sinal vermelho R$ 293,47/7 pts, sem CNH R$ 880,41, moto sem licenciamento R$ 293,47). Radar com tolerância do CTB (7 km/h até 100 km/h, 7% acima).
+
+- CNH: suspensa aos 40 pontos (sem gravíssima), 30 (uma) ou 20 (duas ou mais); janela simplificada para o save inteiro. CNH suspensa conta como sem CNH.
+- Radar: a cena põe as infrações em `RunReport.Capturas` (ou `AddRadar(medida, limite)`). Na moto alugada a multa chega de 2 a 5 dias depois, com taxa de indicação de R$ 20; na bob nunca chega.
+- Abordagem: `SortearBlitzDoDia()` (35%, 50% nos dias 6 e 7), `IniciarBlitz()` ou `ReportarFlagrante(infracao)` devolvem uma `Abordagem`; `ResolverAbordagem(abordagem, Parar | Fugir)` devolve o `AbordagemOutcome`. Sem CNH: multa + moto no pátio (alugada) ou apreendida (bob). Bob: sempre apreendida, parcelas canceladas. Fuga: 45% de escapar; pega, soma tudo mais a desobediência e a moto é removida.
+- Pátio: `CustoPatio` (guincho R$ 180 + R$ 45 por dia), `RetirarDoPatio()` (perde também o dia da retirada). Moto apreendida: `EscolherNovaMoto(origem)`; sem moto no fim da semana o resultado é `WeekResult.SemMoto`.
+- Relatório: `WeekReport.Transito` (`TransitoReport`) com multas pagas e pendentes, pontos, status da CNH e da moto e as blitz.
+
 ## Rodando os testes
 
 No editor: Window → General → Test Runner → aba EditMode → Run All.
