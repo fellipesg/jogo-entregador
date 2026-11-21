@@ -4,5 +4,8 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/_Jogo/Scenes/SantoAmaro.unity
+    guid: 52fca4b63e0df4c3c89aae7eb3c293a6
   m_configObjects: {}
