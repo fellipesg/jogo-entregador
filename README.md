@@ -1,6 +1,6 @@
 # Jogo do Entregador
 
-Título provisório. Jogo mobile em Unity sobre a rotina de um entregador de app em São Paulo. A fatia vertical se passa em Santo Amaro (zona sul): uma semana de trabalho, com aluguel da moto, chuva, imprevistos e a meta semanal do app.
+Título provisório. Jogo mobile em Unity sobre a rotina de um entregador de app em São Paulo. A fatia vertical se passa em Santo Amaro (zona sul), num mapa montado de dados reais do OpenStreetMap: uma semana de trabalho, com aluguel da moto, chuva, imprevistos e a meta semanal do app.
 
 ## Versão
 
@@ -12,12 +12,13 @@ Unity 6000.6.10f1.
 Assets/_Jogo/
   Scripts/Core/       Regras do jogo em C# puro (sem UnityEngine): dinheiro, app, economia, imprevistos, clima, GameSession
   Scripts/Game/       Camada Unity (assembly Entregador.Game): moto, câmera, entrada, GPS, interface e GameFlow
-  Scripts/Editor/     Gerador da cidade e configuração de URP/paisagem (assembly Entregador.Editor, só no Editor)
+  Scripts/Editor/     Gerador da cidade (CityBuilder*, leitor do OSM em Osm/) e configuração de URP/paisagem (assembly Entregador.Editor, só no Editor)
+  Data/OSM/           Extrato do OpenStreetMap do centro de Santo Amaro (santo_amaro.json) e a licença ODbL
   Scenes/             SantoAmaro.unity (gerada pelo CityBuilder)
   Materials/          Materiais URP (gerados): um por kit do Kenney (Kenney_<Kit>.mat), cores simples e a fita do GPS
   Settings/           Asset URP mobile, renderer e material de física da moto
   Tests/EditMode/     Testes NUnit das regras
-  Tests/PlayMode/     Testes da cena (moto, corrida, semana, tempo das corridas, GPS, meio-fio, chuva, trânsito, reclamação do cliente, conta bloqueada, oferta que expira) e capturas de tela
+  Tests/PlayMode/     Testes da cena (moto, corrida, semana, tempo das corridas, GPS, corredor de ônibus, meio-fio, chuva, trânsito, reclamação do cliente, conta bloqueada, oferta que expira), do grafo de ruas (sentido único) e capturas de tela
 Assets/ThirdParty/Kenney/   Modelos CC0 do Kenney (só os carros, semáforos antigos não são mais usados) com a License.txt de cada kit
 Assets/ThirdParty/PolyHaven/ Texturas PBR e HDRIs CC0 do Poly Haven (ver "Arte fotográfica" abaixo)
 Assets/TextMesh Pro/        TMP Essential Resources (fonte LiberationSans SDF, OFL) importados do pacote com.unity.ugui
@@ -50,7 +51,26 @@ Menu `Jogo > Gerar cidade (Santo Amaro)` ou, pela linha de comando (editor fecha
   -executeMethod Entregador.Editor.CityBuilder.BuildFromCommandLine -logFile /tmp/cidade.log
 ```
 
-Isso recria `SantoAmaro.unity` do zero (nunca edite a cena à mão), configura o URP mobile e a orientação paisagem, e põe a cena nos Build Settings. Toda criação de prédio, rua, árvore, carro e marcador passa por `CityPieces`; o layout (ruas, quarteirões, restaurantes, props, trânsito) está em `CityBuilder`.
+Isso recria `SantoAmaro.unity` do zero (nunca edite a cena à mão), configura o URP mobile e a orientação paisagem, e põe a cena nos Build Settings. Toda criação de prédio, rua, árvore, carro e marcador passa por `CityPieces`/`MeshBatch`; o layout vem do OpenStreetMap (seção abaixo). Com a variável de ambiente `JOGO_DEBUG_DIR` definida, o gerador grava `grade.png` (ruas por classe, quarteirões, largo, parques e a ocupação dos lotes) para conferir o layout sem abrir o jogo.
+
+## Mapa do OpenStreetMap
+
+A cidade é o centro de Santo Amaro (em volta do Largo Treze de Maio) montado a partir de dados reais do OpenStreetMap: `Assets/_Jogo/Data/OSM/santo_amaro.json` (resposta da Overpass API com `out geom`, caixa de lat -23,6578 a -23,6488 e lon -46,7112 a -46,7014, cerca de 1 km²). **Os dados são © OpenStreetMap contributors, licença ODbL** (`Data/OSM/LICENSE.txt`); o jogo mostra o crédito "© OpenStreetMap contributors" no canto de baixo do minimapa.
+
+Pipeline (tudo no assembly de Editor; a cena gerada já carrega o resultado):
+
+1. **Leitura e projeção** (`Osm/OsmJson`, `Osm/OsmMap`): leitor mínimo de JSON; projeção equiretangular em torno do centro da caixa, x = leste, z = norte, 1 unidade = 1 m, sem altitude. Tudo é recortado pela caixa. A área jogável fica 25 m para dentro (`CityBuilder.PlayableHalf` = 475 m): paredes invisíveis e, em cada rua que cruza a borda, uma barreira de obra com a placa OBRA; a cidade (prédios, ruas) continua visível até a caixa.
+2. **Ruas** (`CityBuilder.Network`): `primary/secondary` = principal, `tertiary`, `residential/living_street/unclassified` e `service` (só ruas de verdade, sem estacionamento nem passagem) viram fitas com largura por tipo (principal 14 m, terciária 10 m, residencial 7,5 m, serviço 5 m; sentido único usa menos), ou por `lanes` (3,0 a 3,4 m por faixa) e `width`. Faixas de ônibus (`psv:lanes=designated`) ficam fora das faixas comuns e saem vermelhas; `highway=busway` é todo vermelho; `pedestrian` é calçadão de piso hexagonal. Pistas duplas mapeadas como dois ways lado a lado têm a largura dividida na proporção para não se sobrepor.
+3. **Quarteirões**: as ruas são pintadas numa grade de 0,5 m (com uma margem de 8 m de "rua virtual" fora da caixa). O que sobra entre as ruas são os quarteirões: uma abertura morfológica de 3,5 m arredonda as esquinas, as regiões conexas são rotuladas e o contorno de cada uma é traçado e simplificado (Douglas-Peucker, 0,85 m) num polígono anti-horário. O asfalto é um chão único; cada quarteirão é uma calçada elevada (15 cm) com guia por cima, então cruzamentos nunca têm vão nem z-fighting. Faixas e travessias ficam sobre o asfalto (pequenos deslocamentos em y).
+4. **Prédios e fachada**: as pegadas do OSM (`building=*`, menos `roof`) viram prédios procedurais (`CityBuildings`): a fachada olha para a aresta de quarteirão mais próxima, o retângulo alinhado a ela cobre a pegada, e os andares vêm de `building:levels`/`height` (sem eles, por contexto: avenida e largo = comércio com loja no térreo e 2 a 4 andares, alguns prédios de 5 a 12; rua residencial = sobrado). O resto da frente de cada quarteirão é preenchido com lotes voltados para a rua (largura de 8 a 14 m, fundo de 15 m, reduzidos se esbarrarem na esquina ou num vizinho); só as paredes laterais expostas (esquina, vão) ganham janelas. Os fundos recebem galpões e casinhas baixos onde sobrou espaço (a pegada de cada prédio fica numa grade de ocupação, que também vira o collider das paredes). Parques/jardins, cemitério e estacionamentos viram grama ou piso, o largo é um disco de piso hexagonal com fonte, bancos e árvores.
+5. **Grafo e GPS** (`RoadGraph`): cada vértice das ruas dirigíveis é um nó (nós do OSM compartilhados são os cruzamentos); `oneway=yes` vira aresta com direção; o GPS **respeita a mão**, mas andar contra ela custa 2,2x a distância (só compensa quando o desvio legal é bem maior; comprimentos são sempre em metros reais). **Corredores de ônibus e ruas de pedestres não entram no grafo** (ilegais para moto): o `CityMap` guarda as faixas de ônibus e o teste `GpsRoutesNeverDriveAlongTheBusCorridor` confere que nenhuma rota anda ao longo delas.
+6. **Jogo**: 4 restaurantes (mesmos nomes, marcadores e fachadas) em frentes de rua reais perto do largo e das avenidas, 20 endereços de cliente nas ruas residenciais e terciárias de perto a longe, 14 buracos em ruas residenciais, 8 carros de trânsito em circuitos fechados reais (nós disjuntos, carros do mesmo circuito mantêm distância e quem cruza cede por ordem), carros estacionados rente à guia, pontos de ônibus nos `bus_stop` do OSM, árvores do OSM mais árvores de calçada, postes com fios, semáforos nos `traffic_signals`, faixas de pedestre nos `crossing`, placas de PARE e lombadas.
+
+### Trocar de bairro
+
+1. Baixe outro extrato com a Overpass API (`out geom`: ways e nós de `highway`, `building`, `leisure`, `landuse`, `amenity=parking`, `natural=tree`, `public_transport`/`bus_stop`) e substitua `Data/OSM/santo_amaro.json`.
+2. Ajuste a caixa em `OsmMap` (`BoxSouth/North/West/East`), o centro e o raio do largo em `CityBuilder.Blocks` (`LargoCenter`, `LargoRadius`; use o ponto central de uma praça do novo extrato) e, se quiser, os nomes de rua de reserva em `CityBuilder.Places`.
+3. Regere a cena (`BuildFromCommandLine`), rode os testes e, se os pedidos saírem curtos ou longos demais, ajuste `GameTuning.WorldToGameKm` (o teste `PlannedRunTimes...` imprime a tabela).
 
 ## Arte (Kenney, CC0)
 
@@ -87,11 +107,11 @@ A direção de arte é semi-realista: texturas fotográficas PBR, proporções d
 
 ### Geração da cidade
 
-Tudo vira malhas fundidas, uma por quarteirão (`MeshBatch`, um submesh por material), salvas em binário em `Assets/_Jogo/Scenes/SantoAmaro_MalhasNN.asset` (arquivos de ~25 malhas; são GERADOS, mas a cena os referencia por GUID: faça commit deles junto com a cena ou regere). Peças:
+Tudo vira malhas fundidas por pedaço do mapa de 100 m (`MeshBatch`, um submesh por material): um grupo para o chão (calçadas, faixas, pisos; aparece no minimapa) e outro para prédios e mobiliário alto (camada 8, que o minimapa não desenha). As malhas são salvas em binário em `Assets/_Jogo/Scenes/SantoAmaro_MalhasNN.asset` (arquivos de até ~50 MB; são GERADOS, mas a cena os referencia por GUID: faça commit deles junto com a cena ou regere). Peças:
 
-- `CityBuildings`: o único gerador de prédios (determinístico por semente): sobrados (muro com portões, laje com parapeito ou telhado cerâmico/fibrocimento, andar de tijolo aparente, grades, caixa d'água, ar-condicionado), comércio com sobreloja (porta de enrolar aberta/fechada, vitrine, toldo e letreiro em TextMeshPro), prédios médios de 5 a 12 andares (janelas e varandas em geometria, casa de máquinas, caixa d'água) e os 4 restaurantes (porta aberta, toldo na cor, letreiro, mesas na calçada). Quarteirões longe do largo usam "detalhe reduzido" (`BuildingContext.Lite`) para caber no orçamento de triângulos.
-- `CityBuilder.Streets/Blocks/Furniture` (partials do CityBuilder): asfalto, faixas, faixas de pedestre, corredor de ônibus, lombadas (visuais), bueiros, guia e calçada, buracos (remendo escuro irregular), postes de concreto com fios em catenária, luminárias, lixeiras laranja, pontos de ônibus, árvores, semáforos, placas de PARE, caçambas.
-- Colliders: um por quarteirão (miolo), laje + rampas de calçada, cápsulas finas nos postes; nada por detalhe.
+- `CityBuildings`: o único gerador de prédios (determinístico por semente): sobrados (muro com portões, laje com parapeito ou telhado cerâmico/fibrocimento, andar de tijolo aparente, grades, caixa d'água, ar-condicionado), comércio com sobreloja (porta de enrolar aberta/fechada, vitrine, toldo e letreiro em TextMeshPro), prédios médios de 5 a 12 andares (janelas e varandas em geometria, casa de máquinas, caixa d'água) e os 4 restaurantes (porta aberta, toldo na cor, letreiro, mesas na calçada). Lotes a mais de 250 m do largo usam "detalhe reduzido" (`BuildingContext.Lite`) para caber no orçamento de triângulos. Os letreiros usam nomes inventados (nunca as marcas do OSM); há uma "Borracharia 24h".
+- `CityBuilder.Network/Blocks/Lots/Furniture/Places` (partials do CityBuilder): ruas, faixas e travessias, quarteirões e colliders, prédios e lotes, mobiliário (postes de concreto com fios em catenária, luminárias, lixeiras laranja, pontos de ônibus, árvores, semáforos, placas de PARE, caçambas, lombadas, bueiros), restaurantes, endereços, buracos, o largo e os pontos de vista das capturas.
+- Colliders: uma laje por quarteirão (malha com rampa de 0,8 m sobre a rua para a moto subir a guia), paredes dos prédios extrudadas do contorno da ocupação, cápsulas finas nos postes e troncos; nada por detalhe.
 
 ### Luz e atmosfera
 
@@ -129,7 +149,7 @@ Para trocar um modelo, mude só o nome em `CityBuilder`/`CityPieces` e regere a 
 
 ### Tempo das corridas
 
-`GameTuning`: `WorldToGameKm = 0,0042` (3,5 km = 830 m de rua; as rotas da cidade chegam a ~1.300 m), `ReferenceSpeed = 7 m/s` (tempo previsto = metros / 7; a moto anda no máximo 13 m/s) e `MinPickupMeters = 150`. Para pedidos de 2 a 5 km, o tempo previsto fica entre cerca de 90 e 240 s; o PlayMode `PlannedRunTimes...` confere.
+`GameTuning`: `WorldToGameKm = 0,0042` (3,5 km = 830 m de rua; no mapa do OSM as rotas entre restaurantes e endereços chegam a ~1.200 m, então 1,5 a 5,5 km cabem), `ReferenceSpeed = 7 m/s` (tempo previsto = metros / 7; a moto anda no máximo 13 m/s) e `MinPickupMeters = 150`. O `RunPlanner` junta restaurante e endereço cuja rota combina com a distância e, entre os pares quase igualmente bons, prefere o restaurante mais perto da moto (acima do mínimo de busca). Para pedidos de 2 a 5 km, o tempo previsto fica entre cerca de 100 e 235 s; o PlayMode `PlannedRunTimes...` confere.
 
 ### Testes de PlayMode e capturas
 
@@ -139,7 +159,7 @@ JOGO_SHOTS_DIR=/tmp/shots /Applications/Unity/Hub/Editor/6000.6.10f1/Unity.app/C
   -testResults /tmp/play.xml -logFile /tmp/play.log
 ```
 
-Sem `-nographics`: o teste `ScreenshotTests` grava PNGs 1600x900 em `JOGO_SHOTS_DIR` (rua residencial com HUD e GPS, o largo com os restaurantes, a avenida com trânsito, mapa visto de cima, dia de chuva, painéis).
+Sem `-nographics`: o teste `ScreenshotTests` grava PNGs 1600x900 em `JOGO_SHOTS_DIR` (avenida com corredor de ônibus e trânsito, rua residencial com HUD, minimapa e GPS, rua com postes e fios, a borracharia, o largo, os 4 restaurantes, um cruzamento com semáforos e faixas, uma curva diagonal, a borda do mapa, o mapa visto de cima com e sem prédios, dia de chuva, painéis), mais `stats.txt` com drawCalls, SetPass e triângulos. Os pontos de vista (`residencial`, `avenida`, `largo`, `cruzamento`, `curva`, `restauranteN`, `borda`) vêm do `CityMap.ViewPoints`, gerados pelo `CityBuilder`.
 
 ### Texto (TextMeshPro)
 

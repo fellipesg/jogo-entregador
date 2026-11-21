@@ -20,8 +20,9 @@ namespace Entregador.Game
     }
 
     /// <summary>
-    /// Escolhe, para um pedido de DistanceKm, o restaurante e o endereço cuja rota combina melhor com a distância
-    /// (convertida em metros pelo fator WorldToGameKm).
+    /// Escolhe, para um pedido de DistanceKm, o restaurante e o endereço cuja rota combina com a distância (convertida em metros pelo
+    /// fator WorldToGameKm). Entre os pares que acertam a distância quase tão bem quanto o melhor, prefere restaurantes que não estejam
+    /// colados na moto (MinPickupMeters) e, destes, os mais perto: a busca do pedido não vira um passeio pela cidade.
     /// </summary>
     public static class RunPlanner
     {
@@ -29,15 +30,12 @@ namespace Entregador.Game
         {
             RoadGraph graph = map.Graph;
             float targetMeters = (float)order.DistanceKm / tuning.WorldToGameKm;
-
-            var best = new List<(Place restaurant, Place customer, float meters, float error)>();
+            var pairs = new List<(Place restaurant, Place customer, float meters, float error, float pickup)>();
             float minError = float.MaxValue;
 
             foreach (Place restaurant in map.Restaurants)
             {
-                Place bestCustomer = null;
-                float bestMeters = 0f;
-                float bestError = float.MaxValue;
+                float pickup = graph.RouteLength(bikePosition, restaurant.Position);
 
                 foreach (Place customer in map.Customers)
                 {
@@ -48,42 +46,27 @@ namespace Entregador.Game
 
                     float meters = graph.RouteLength(restaurant.Position, customer.Position);
                     float error = Mathf.Abs(meters - targetMeters);
-
-                    if (error < bestError)
-                    {
-                        bestError = error;
-                        bestMeters = meters;
-                        bestCustomer = customer;
-                    }
+                    pairs.Add((restaurant, customer, meters, error, pickup));
+                    minError = Mathf.Min(minError, error);
                 }
-
-                if (bestCustomer == null)
-                {
-                    continue;
-                }
-
-                best.Add((restaurant, bestCustomer, bestMeters, bestError));
-                minError = Mathf.Min(minError, bestError);
             }
 
-            // Entre os restaurantes que acertam a distância quase tão bem quanto o melhor, sorteia um.
-            var candidates = best.FindAll(c => c.error <= minError + 40f);
+            var candidates = pairs.FindAll(p => p.error <= Mathf.Max(minError + 40f, 80f));
+            var notGlued = candidates.FindAll(p => p.pickup >= tuning.MinPickupMeters);
 
-            // Prefere um restaurante que não esteja colado na moto; se nenhum acerta a distância assim, relaxa um pouco a tolerância.
-            if (!candidates.Exists(c => graph.RouteLength(bikePosition, c.restaurant.Position) >= tuning.MinPickupMeters))
+            if (notGlued.Count > 0)
             {
-                var relaxed = best.FindAll(c => c.error <= minError + 100f && graph.RouteLength(bikePosition, c.restaurant.Position) >= tuning.MinPickupMeters);
-
-                if (relaxed.Count > 0)
-                {
-                    candidates = relaxed;
-                }
+                candidates = notGlued;
             }
-            else
+
+            float nearest = float.MaxValue;
+
+            foreach (var candidate in candidates)
             {
-                candidates = candidates.FindAll(c => graph.RouteLength(bikePosition, c.restaurant.Position) >= tuning.MinPickupMeters);
+                nearest = Mathf.Min(nearest, candidate.pickup);
             }
 
+            candidates = candidates.FindAll(p => p.pickup <= nearest + 120f);
             var pick = candidates[random.Range(0, candidates.Count)];
 
             return new RunPlan
@@ -91,7 +74,7 @@ namespace Entregador.Game
                 Restaurant = pick.restaurant,
                 Customer = pick.customer,
                 DeliveryMeters = pick.meters,
-                PickupMeters = graph.RouteLength(bikePosition, pick.restaurant.Position),
+                PickupMeters = pick.pickup,
             };
         }
     }

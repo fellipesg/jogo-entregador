@@ -20,7 +20,7 @@ namespace Entregador.Game.Tests
         public IEnumerator BikeMovesForwardWhenGasIsHeld()
         {
             var input = Flow.Bike.GetComponent<BikeInput>();
-            Flow.Bike.Teleport(new Vector3(0f, 0.1f, 0f), 0f);
+            Flow.Bike.Teleport(Flow.Map.BikeSpawn, Flow.Map.BikeSpawnYaw);
             Flow.Bike.SetLocked(false);
             yield return new WaitForFixedUpdate();
 
@@ -29,7 +29,7 @@ namespace Entregador.Game.Tests
             yield return new WaitForSeconds(1f);
             input.SetVirtual(0f, 0f, 0f);
 
-            float forward = Vector3.Dot(Flow.Bike.Position - start, Vector3.forward);
+            float forward = Vector3.Dot(Flow.Bike.Position - start, Heading(Flow.Map.BikeSpawnYaw));
             Assert.Greater(forward, 3f, "A moto deveria andar para frente com o acelerador apertado.");
             Assert.Greater(Flow.Bike.ForwardSpeed, 3f);
             Assert.Less(Flow.Bike.Position.y, 1f, "A moto deveria ficar no chão.");
@@ -39,7 +39,7 @@ namespace Entregador.Game.Tests
         public IEnumerator BikeTurnsWhenSteeringAndStopsWhenBraking()
         {
             var input = Flow.Bike.GetComponent<BikeInput>();
-            Flow.Bike.Teleport(new Vector3(0f, 0.1f, 0f), 0f);
+            Flow.Bike.Teleport(Flow.Map.BikeSpawn, Flow.Map.BikeSpawnYaw);
             Flow.Bike.SetLocked(false);
             input.SetVirtual(0f, 1f, 0f);
             yield return new WaitForSeconds(1.5f);
@@ -291,12 +291,40 @@ namespace Entregador.Game.Tests
             Assert.Less(first.y, 0.5f, "A linha deve ficar rente ao asfalto.");
         }
 
+        /// <summary>Procura, ao longo da rua do ponto de vista, um lugar de onde 8 m à direita só há calçada e parede de prédio (sem poste, árvore nem carro).</summary>
+        private bool FindClearCurbCrossing(ViewPoint street, out Vector3 start, out Vector3 right)
+        {
+            Vector3 flow = Heading(street.Yaw);
+            right = Vector3.Cross(Vector3.up, flow);
+
+            for (float along = -12f; along <= 40f; along += 3f)
+            {
+                start = street.Position + flow * along;
+                bool clear = true;
+
+                foreach (RaycastHit hit in Physics.RaycastAll(start + Vector3.up * 0.5f, right, 8f))
+                {
+                    clear &= hit.collider.name.StartsWith("Calcada_") || hit.collider.name.StartsWith("Paredes_");
+                }
+
+                if (clear && !Physics.CheckSphere(start + Vector3.up * 1.6f, 1.0f))
+                {
+                    return true;
+                }
+            }
+
+            start = street.Position;
+
+            return false;
+        }
+
         [UnityTest]
         public IEnumerator BikeRidesUpTheSidewalkCurbInsteadOfHittingAWall()
         {
-            RoadGraph graph = Flow.Map.Graph;
-            Vector3 corner = graph.NodePosition(1 * 10 + 2);
-            Flow.Bike.Teleport(new Vector3(corner.x + 1f, 0.1f, corner.z + 50f), 90f);
+            ViewPoint street = View("residencial");
+            Assert.IsTrue(FindClearCurbCrossing(street, out Vector3 start, out Vector3 right), "Nenhum trecho de rua livre para cruzar a guia.");
+            float yaw = Mathf.Atan2(right.x, right.z) * Mathf.Rad2Deg;
+            Flow.Bike.Teleport(new Vector3(start.x, 0.1f, start.z), yaw);
             Flow.Bike.SetLocked(false);
             var input = Flow.Bike.GetComponent<BikeInput>();
             yield return new WaitForFixedUpdate();
@@ -311,8 +339,57 @@ namespace Entregador.Game.Tests
             }
 
             input.SetVirtual(0f, 0f, 0f);
-            Assert.Greater(Flow.Bike.Position.x, corner.x + 6.5f, "A moto deveria passar do meio-fio (rua tem 6 m de meia-largura).");
+            float crossed = Vector3.Dot(Flow.Bike.Position - start, right);
+            Assert.Greater(crossed, 3.9f, "A moto deveria passar do meio-fio (rua de 6 a 7,5 m) e andar um pouco na calçada.");
             Assert.Greater(maxY, 0.03f, "A moto deveria subir na calçada (cerca de 15 cm de altura).");
+        }
+
+        [UnityTest]
+        public IEnumerator GpsRoutesNeverDriveAlongTheBusCorridor()
+        {
+            BusLane[] lanes = Flow.Map.BusLanes;
+            Assert.Greater(lanes.Length, 20, "O mapa do OSM deveria ter corredores de ônibus.");
+            var starts = new System.Collections.Generic.List<Vector3> { Flow.Map.BikeSpawn };
+
+            foreach (Place restaurant in Flow.Map.Restaurants)
+            {
+                starts.Add(restaurant.Position);
+            }
+
+            var route = new System.Collections.Generic.List<Vector3>();
+            int sampled = 0;
+
+            foreach (Vector3 from in starts)
+            {
+                foreach (Place customer in Flow.Map.Customers)
+                {
+                    Flow.Map.Graph.FindRoute(from, customer.Position, route);
+
+                    // Pula o primeiro e o último ponto (são a moto e o endereço, colados na rua): confere o caminho em si.
+                    for (int i = 1; i + 2 < route.Count; i++)
+                    {
+                        float length = Vector3.Distance(route[i], route[i + 1]);
+
+                        for (float d = 0f; d < length; d += 2f)
+                        {
+                            Vector3 p = Vector3.Lerp(route[i], route[i + 1], d / Mathf.Max(0.01f, length));
+                            sampled++;
+
+                            foreach (BusLane lane in lanes)
+                            {
+                                // Atravessar o corredor num cruzamento é legal; andar ao longo dele não.
+                                Vector3 heading = (route[i + 1] - route[i]).normalized;
+                                Vector3 axis = (lane.B - lane.A).normalized;
+                                bool inside = lane.DistanceTo(p) < lane.HalfWidth;
+                                Assert.IsFalse(inside && Mathf.Abs(Vector3.Dot(heading, axis)) > 0.8f, $"Rota de {from} até {customer.Name} anda ao longo do corredor de ônibus em {p}.");
+                            }
+                        }
+                    }
+                }
+            }
+
+            Assert.Greater(sampled, 1000);
+            yield return null;
         }
 
         [UnityTest]
@@ -367,6 +444,55 @@ namespace Entregador.Game.Tests
                 float moved = Vector3.Distance(before[i], cars[i].transform.position);
                 Assert.Greater(moved, 6f, "Carro " + cars[i].name + " deveria andar ~" + cars[i].CruiseSpeed * 1.5f + " m.");
             }
+        }
+
+        [UnityTest]
+        public IEnumerator TrafficCarsNeverInterpenetrate()
+        {
+            var cars = Object.FindObjectsByType<TrafficLoop>(FindObjectsSortMode.None);
+            float closest = float.MaxValue;
+            string who = string.Empty;
+
+            for (int step = 0; step < 100; step++)
+            {
+                yield return new WaitForSeconds(0.25f);
+
+                for (int i = 0; i < cars.Length; i++)
+                {
+                    for (int j = i + 1; j < cars.Length; j++)
+                    {
+                        float d = Vector3.Distance(cars[i].transform.position, cars[j].transform.position);
+
+                        if (d < closest)
+                        {
+                            closest = d;
+                            who = cars[i].name + " e " + cars[j].name;
+                        }
+                    }
+                }
+            }
+
+            Assert.Greater(closest, 2.6f, "Dois carros de trânsito se atravessaram (" + who + ").");
+        }
+
+        [UnityTest]
+        public IEnumerator RestaurantsAndCustomersSitOnTheRoadNetwork()
+        {
+            Assert.AreEqual(4, Flow.Map.Restaurants.Length);
+            Assert.AreEqual(20, Flow.Map.Customers.Length);
+            CollectionAssert.AreEqual(new[] { "Pastelaria do Largo", "Pizzaria Bella Amaro", "Marmitaria da Dona Cida", "Hamburgueria Zona Sul" }, System.Array.ConvertAll(Flow.Map.Restaurants, p => p.Name));
+
+            var all = new System.Collections.Generic.List<Place>(Flow.Map.Restaurants);
+            all.AddRange(Flow.Map.Customers);
+
+            foreach (Place place in all)
+            {
+                Flow.Map.Graph.NearestEdge(place.Position, out Vector3 snapped);
+                Assert.Less(Vector3.Distance(snapped, place.Position), 12f, place.Name + " deveria estar junto de uma rua do grafo.");
+                Assert.IsFalse(Physics.CheckSphere(place.Position + Vector3.up * 1.2f, 1.0f), place.Name + " não pode ficar dentro de um prédio ou carro.");
+            }
+
+            yield return null;
         }
 
         [UnityTest]

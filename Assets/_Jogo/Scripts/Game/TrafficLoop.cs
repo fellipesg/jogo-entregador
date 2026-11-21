@@ -1,11 +1,13 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Entregador.Game
 {
     /// <summary>
-    /// Carro de trânsito: dá voltas num retângulo de pontos (em volta de um quarteirão) numa velocidade fixa.
+    /// Carro de trânsito: dá voltas num circuito fechado de pontos (um laço de ruas reais) numa velocidade fixa.
     /// É cinemático; a moto que bate nele leva dano e derruba comida pelo mecanismo normal de colisão
-    /// (ArcadeBikeController.OnCollisionEnter). Para quando a moto está logo à frente.
+    /// (ArcadeBikeController.OnCollisionEnter). Para quando a moto, ou outro carro, está logo à frente: carros
+    /// do mesmo laço mantêm distância, e nos cruzamentos entre laços o de menor ordem passa primeiro.
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     public sealed class TrafficLoop : MonoBehaviour
@@ -19,7 +21,10 @@ namespace Entregador.Game
         [SerializeField] private float _reachDistance = 6f;
         [SerializeField] private Transform _player;
 
+        private static readonly List<TrafficLoop> All = new List<TrafficLoop>();
+
         private Rigidbody _body;
+        private int _order;
         [SerializeField] private int _next;
         private float _yaw;
         private float _currentSpeed;
@@ -44,6 +49,17 @@ namespace Entregador.Game
             _speed = speed;
             _player = player;
             _next = waypoints.Length == 0 ? 0 : (startIndex + 1) % waypoints.Length;
+        }
+
+        private void OnEnable()
+        {
+            _order = All.Count;
+            All.Add(this);
+        }
+
+        private void OnDisable()
+        {
+            All.Remove(this);
         }
 
         private void Awake()
@@ -82,11 +98,43 @@ namespace Entregador.Game
             _yaw = Mathf.MoveTowardsAngle(_yaw, desiredYaw, _turnRate * dt);
 
             Vector3 forward = Quaternion.Euler(0f, _yaw, 0f) * Vector3.forward;
-            Stopped = PlayerAhead(position, forward);
+            Stopped = PlayerAhead(position, forward) || CarAhead(position, forward);
             _currentSpeed = Mathf.MoveTowards(_currentSpeed, Stopped ? 0f : _speed, _acceleration * dt);
 
             _body.MovePosition(position + forward * (_currentSpeed * dt));
             _body.MoveRotation(Quaternion.Euler(0f, _yaw, 0f));
+        }
+
+        /// <summary>
+        /// Outro carro logo à frente na mesma faixa (a menos de 10 m, quase em cima da minha linha), ou um carro de ordem menor que
+        /// cruza muito perto: esse passa primeiro, e assim dois carros nunca ficam esperando um pelo outro.
+        /// </summary>
+        private bool CarAhead(Vector3 position, Vector3 forward)
+        {
+            foreach (TrafficLoop other in All)
+            {
+                if (other == this)
+                {
+                    continue;
+                }
+
+                Vector3 offset = other.transform.position - position;
+                offset.y = 0f;
+                float along = Vector3.Dot(offset, forward);
+                float lateral = Mathf.Abs(offset.x * forward.z - offset.z * forward.x);
+
+                if (along > 0f && along < 10f && lateral < 2.2f)
+                {
+                    return true;
+                }
+
+                if (offset.magnitude < 6f && along > -1f && lateral < 4f && other._order < _order)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private bool PlayerAhead(Vector3 position, Vector3 forward)

@@ -136,6 +136,19 @@ namespace Entregador.Game
             _minimapImage.texture = minimap;
             _minimapImage.enabled = minimap != null;
 
+            // Atribuição obrigatória dos dados do mapa (licença ODbL), pequena, no canto de baixo do minimapa.
+            RectTransform credit = NewPanel("AtribuicaoOSM", mapFrame, new Color(0f, 0f, 0f, 0.55f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(3f, 3f), new Vector2(190f, 16f));
+            var creditObject = new GameObject("Texto", typeof(RectTransform), typeof(TextMeshProUGUI));
+            creditObject.transform.SetParent(credit, false);
+            Stretch(creditObject.GetComponent<RectTransform>());
+            var creditText = creditObject.GetComponent<TextMeshProUGUI>();
+            creditText.fontSize = 11;
+            creditText.alignment = TextAlignmentOptions.Center;
+            creditText.color = Color.white;
+            creditText.richText = false;
+            creditText.raycastTarget = false;
+            creditText.text = "© OpenStreetMap contributors";
+
             _skipButton = NewButton("Pular", _hudRoot.transform, "Pular corrida", 22, new Color(0.35f, 0.38f, 0.45f, 0.95f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -222f), new Vector2(196f, 50f));
             _skipButton.onClick.AddListener(() => onSkip?.Invoke());
 

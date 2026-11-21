@@ -4,16 +4,30 @@ using UnityEngine;
 namespace Entregador.Game
 {
     /// <summary>
-    /// Grafo das ruas: cada nó é um cruzamento, cada aresta é um trecho de rua. Calcula o caminho mais curto (Dijkstra)
-    /// entre dois pontos quaisquer, que são "colados" no trecho de rua mais próximo.
+    /// Grafo das ruas: cada nó é um cruzamento (ou um vértice de curva), cada aresta é um trecho de rua, com sentido único opcional
+    /// (a aresta de from para to é a mão certa). Calcula o caminho mais curto (Dijkstra com heap) entre dois pontos quaisquer, que
+    /// são "colados" no trecho de rua mais próximo. O GPS respeita a mão: andar contra ela custa WrongWayPenalty vezes a distância,
+    /// então só vale a pena quando o desvio legal é bem maior (nos becos de mão única que a moto não consegue contornar).
+    /// O comprimento devolvido é sempre em metros reais.
     /// </summary>
     public sealed class RoadGraph : MonoBehaviour
     {
         [SerializeField] private Vector3[] _nodes = new Vector3[0];
         [SerializeField] private int[] _edgeFrom = new int[0];
         [SerializeField] private int[] _edgeTo = new int[0];
+        [SerializeField] private bool[] _edgeOneway = new bool[0];
 
-        private List<int>[] _adjacency;
+        /// <summary>Custo (multiplicador da distância) de andar contra o sentido único.</summary>
+        public const float WrongWayPenalty = 2.2f;
+
+        private struct Arc
+        {
+            public int To;
+            public float Cost;
+        }
+
+        private List<Arc>[] _arcs;
+        private readonly Dictionary<(Vector3, Vector3), float> _lengthCache = new Dictionary<(Vector3, Vector3), float>();
 
         public int NodeCount => _nodes.Length;
 
@@ -21,35 +35,43 @@ namespace Entregador.Game
 
         public Vector3 NodePosition(int index) => _nodes[index];
 
-        /// <summary>Usado pelo gerador da cidade.</summary>
-        public void Configure(Vector3[] nodes, int[] edgeFrom, int[] edgeTo)
+        public bool IsOneway(int edge) => edge < _edgeOneway.Length && _edgeOneway[edge];
+
+        /// <summary>Usado pelo gerador da cidade. edgeOneway (opcional): true = só de from para to.</summary>
+        public void Configure(Vector3[] nodes, int[] edgeFrom, int[] edgeTo, bool[] edgeOneway = null)
         {
             _nodes = nodes;
             _edgeFrom = edgeFrom;
             _edgeTo = edgeTo;
-            _adjacency = null;
+            _edgeOneway = edgeOneway ?? new bool[edgeFrom.Length];
+            _arcs = null;
+            _lengthCache.Clear();
         }
 
         private void EnsureAdjacency()
         {
-            if (_adjacency != null)
+            if (_arcs != null)
             {
                 return;
             }
 
-            _adjacency = new List<int>[_nodes.Length];
+            _arcs = new List<Arc>[_nodes.Length];
 
-            for (int i = 0; i < _adjacency.Length; i++)
+            for (int i = 0; i < _nodes.Length; i++)
             {
-                _adjacency[i] = new List<int>(4);
+                _arcs[i] = new List<Arc>(3);
             }
 
             for (int e = 0; e < _edgeFrom.Length; e++)
             {
-                _adjacency[_edgeFrom[e]].Add(e);
-                _adjacency[_edgeTo[e]].Add(e);
+                float length = FlatDistance(_nodes[_edgeFrom[e]], _nodes[_edgeTo[e]]);
+                _arcs[_edgeFrom[e]].Add(new Arc { To = _edgeTo[e], Cost = length });
+                _arcs[_edgeTo[e]].Add(new Arc { To = _edgeFrom[e], Cost = length * WrongWay(e) });
             }
         }
+
+        /// <summary>Multiplicador de custo de andar contra a mão no trecho e (1 se o trecho tem mão dupla).</summary>
+        private float WrongWay(int edge) => IsOneway(edge) ? WrongWayPenalty : 1f;
 
         /// <summary>Trecho de rua mais próximo do ponto, e o ponto projetado nele.</summary>
         public int NearestEdge(Vector3 point, out Vector3 snapped)
@@ -96,15 +118,14 @@ namespace Entregador.Game
         }
 
         /// <summary>
-        /// Rota de from até to, passando pelas ruas. A lista devolvida começa em from e termina em to.
-        /// Devolve o comprimento total em metros (0 se o grafo estiver vazio).
+        /// Rota de from até to, passando pelas ruas, preferindo a mão certa. A lista devolvida começa em from e termina em to.
+        /// Devolve o comprimento total em metros (a distância reta se o grafo estiver vazio ou desconexo).
         /// </summary>
         public float FindRoute(Vector3 from, Vector3 to, List<Vector3> route)
         {
             route.Clear();
-            EnsureAdjacency();
 
-            if (_nodes.Length == 0)
+            if (_nodes.Length == 0 || _edgeFrom.Length == 0)
             {
                 route.Add(from);
                 route.Add(to);
@@ -112,6 +133,37 @@ namespace Entregador.Game
                 return FlatDistance(from, to);
             }
 
+            EnsureAdjacency();
+
+            if (Solve(from, to, route, out float length))
+            {
+                return length;
+            }
+
+            route.Clear();
+            route.Add(from);
+            route.Add(to);
+
+            return FlatDistance(from, to);
+        }
+
+        /// <summary>Só o comprimento da rota, em metros (com cache: restaurantes e endereços são pontos fixos).</summary>
+        public float RouteLength(Vector3 from, Vector3 to)
+        {
+            if (_lengthCache.TryGetValue((from, to), out float cached))
+            {
+                return cached;
+            }
+
+            float length = FindRoute(from, to, new List<Vector3>());
+            _lengthCache[(from, to)] = length;
+
+            return length;
+        }
+
+        private bool Solve(Vector3 from, Vector3 to, List<Vector3> route, out float length)
+        {
+            length = 0f;
             int fromEdge = NearestEdge(from, out Vector3 fromSnap);
             int toEdge = NearestEdge(to, out Vector3 toSnap);
 
@@ -119,10 +171,8 @@ namespace Entregador.Game
             int source = _nodes.Length;
             int target = _nodes.Length + 1;
             int total = _nodes.Length + 2;
-
             var distance = new float[total];
             var previous = new int[total];
-            var done = new bool[total];
 
             for (int i = 0; i < total; i++)
             {
@@ -130,29 +180,61 @@ namespace Entregador.Game
                 previous[i] = -1;
             }
 
+            var heap = new MinHeap();
             distance[source] = 0f;
+            heap.Push(0f, source);
 
-            for (int step = 0; step < total; step++)
+            while (heap.Count > 0)
             {
-                int current = -1;
-                float best = float.PositiveInfinity;
+                heap.Pop(out float d, out int current);
 
-                for (int i = 0; i < total; i++)
+                if (d > distance[current])
                 {
-                    if (!done[i] && distance[i] < best)
-                    {
-                        best = distance[i];
-                        current = i;
-                    }
+                    continue;
                 }
 
-                if (current < 0 || current == target)
+                if (current == target)
                 {
                     break;
                 }
 
-                done[current] = true;
-                Relax(current, source, target, fromEdge, toEdge, fromSnap, toSnap, distance, previous);
+                if (current == source)
+                {
+                    int a = _edgeFrom[fromEdge];
+                    int b = _edgeTo[fromEdge];
+                    Relax(current, b, FlatDistance(fromSnap, _nodes[b]), distance, previous, heap);
+                    Relax(current, a, FlatDistance(fromSnap, _nodes[a]) * WrongWay(fromEdge), distance, previous, heap);
+
+                    if (fromEdge == toEdge)
+                    {
+                        Vector3 along = _nodes[b] - _nodes[a];
+                        bool forward = along.x * (toSnap.x - fromSnap.x) + along.z * (toSnap.z - fromSnap.z) >= 0f;
+                        Relax(current, target, FlatDistance(fromSnap, toSnap) * (forward ? 1f : WrongWay(fromEdge)), distance, previous, heap);
+                    }
+
+                    continue;
+                }
+
+                foreach (Arc arc in _arcs[current])
+                {
+                    Relax(current, arc.To, arc.Cost, distance, previous, heap);
+                }
+
+                // Chegando ao trecho do destino: de from para to é a mão certa; de to para from é contra a mão.
+                if (current == _edgeFrom[toEdge])
+                {
+                    Relax(current, target, FlatDistance(_nodes[current], toSnap), distance, previous, heap);
+                }
+
+                if (current == _edgeTo[toEdge])
+                {
+                    Relax(current, target, FlatDistance(_nodes[current], toSnap) * WrongWay(toEdge), distance, previous, heap);
+                }
+            }
+
+            if (float.IsPositiveInfinity(distance[target]))
+            {
+                return false;
             }
 
             var path = new List<int>();
@@ -163,6 +245,7 @@ namespace Entregador.Game
             }
 
             path.Reverse();
+            route.Clear();
             route.Add(from);
 
             foreach (int node in path)
@@ -172,50 +255,15 @@ namespace Entregador.Game
 
             route.Add(to);
 
-            float length = 0f;
-
             for (int i = 1; i < route.Count; i++)
             {
                 length += FlatDistance(route[i - 1], route[i]);
             }
 
-            return length;
+            return true;
         }
 
-        /// <summary>Só o comprimento da rota, em metros.</summary>
-        public float RouteLength(Vector3 from, Vector3 to)
-        {
-            return FindRoute(from, to, new List<Vector3>());
-        }
-
-        private void Relax(int current, int source, int target, int fromEdge, int toEdge, Vector3 fromSnap, Vector3 toSnap, float[] distance, int[] previous)
-        {
-            if (current == source)
-            {
-                Link(current, _edgeFrom[fromEdge], FlatDistance(fromSnap, _nodes[_edgeFrom[fromEdge]]), distance, previous);
-                Link(current, _edgeTo[fromEdge], FlatDistance(fromSnap, _nodes[_edgeTo[fromEdge]]), distance, previous);
-
-                if (fromEdge == toEdge)
-                {
-                    Link(current, target, FlatDistance(fromSnap, toSnap), distance, previous);
-                }
-
-                return;
-            }
-
-            foreach (int edge in _adjacency[current])
-            {
-                int other = _edgeFrom[edge] == current ? _edgeTo[edge] : _edgeFrom[edge];
-                Link(current, other, FlatDistance(_nodes[current], _nodes[other]), distance, previous);
-            }
-
-            if (current == _edgeFrom[toEdge] || current == _edgeTo[toEdge])
-            {
-                Link(current, target, FlatDistance(_nodes[current], toSnap), distance, previous);
-            }
-        }
-
-        private static void Link(int from, int to, float cost, float[] distance, int[] previous)
+        private static void Relax(int from, int to, float cost, float[] distance, int[] previous, MinHeap heap)
         {
             float candidate = distance[from] + cost;
 
@@ -223,6 +271,79 @@ namespace Entregador.Game
             {
                 distance[to] = candidate;
                 previous[to] = from;
+                heap.Push(candidate, to);
+            }
+        }
+
+        /// <summary>Heap binário mínimo de (chave, nó); entradas repetidas são descartadas ao sair (Dijkstra preguiçoso).</summary>
+        private sealed class MinHeap
+        {
+            private readonly List<float> _keys = new List<float>();
+            private readonly List<int> _values = new List<int>();
+
+            public int Count => _keys.Count;
+
+            public void Push(float key, int value)
+            {
+                _keys.Add(key);
+                _values.Add(value);
+                int i = _keys.Count - 1;
+
+                while (i > 0)
+                {
+                    int parent = (i - 1) / 2;
+
+                    if (_keys[parent] <= _keys[i])
+                    {
+                        break;
+                    }
+
+                    Swap(parent, i);
+                    i = parent;
+                }
+            }
+
+            public void Pop(out float key, out int value)
+            {
+                key = _keys[0];
+                value = _values[0];
+                int last = _keys.Count - 1;
+                _keys[0] = _keys[last];
+                _values[0] = _values[last];
+                _keys.RemoveAt(last);
+                _values.RemoveAt(last);
+                int i = 0;
+
+                while (true)
+                {
+                    int left = i * 2 + 1;
+                    int right = left + 1;
+                    int smallest = i;
+
+                    if (left < _keys.Count && _keys[left] < _keys[smallest])
+                    {
+                        smallest = left;
+                    }
+
+                    if (right < _keys.Count && _keys[right] < _keys[smallest])
+                    {
+                        smallest = right;
+                    }
+
+                    if (smallest == i)
+                    {
+                        break;
+                    }
+
+                    Swap(smallest, i);
+                    i = smallest;
+                }
+            }
+
+            private void Swap(int a, int b)
+            {
+                (_keys[a], _keys[b]) = (_keys[b], _keys[a]);
+                (_values[a], _values[b]) = (_values[b], _values[a]);
             }
         }
 

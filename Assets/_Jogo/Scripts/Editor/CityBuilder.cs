@@ -13,86 +13,72 @@ using Object = UnityEngine.Object;
 namespace Entregador.Editor
 {
     /// <summary>
-    /// Gera do zero a cena Assets/_Jogo/Scenes/SantoAmaro.unity: cidade greybox de cerca de 1 km x 1 km,
-    /// moto, câmeras, grafo de ruas, restaurantes, endereços, buracos e o objeto GameRoot que roda o jogo.
+    /// Gera do zero a cena Assets/_Jogo/Scenes/SantoAmaro.unity a partir do extrato do OpenStreetMap (Assets/_Jogo/Data/OSM): ruas,
+    /// quarteirões, prédios procedurais, moto, câmeras, grafo de ruas, restaurantes, endereços, buracos, trânsito e o GameRoot do jogo.
     /// Uso: menu Jogo/Gerar cidade, ou -executeMethod Entregador.Editor.CityBuilder.BuildFromCommandLine.
+    /// Dados do mapa © OpenStreetMap contributors (ODbL).
     /// </summary>
     public static partial class CityBuilder
     {
         public const string ScenePath = "Assets/_Jogo/Scenes/SantoAmaro.unity";
 
-        // Medidas em metros.
-        private const int StreetCount = 10;
-        private const int BlockCount = StreetCount - 1;
-        private const float BlockSize = 130f;
-        private const float MinCustomerMeters = 220f;
-        private const float StreetHalfWidth = 6f;
-        private const float AvenueHalfWidth = 12f;
-        private const int AvenueIndex = 4;
-        private const float SidewalkInset = 3f;
-
-        // Largo (praça): bloco entre as ruas verticais 3-4 e as horizontais 4-5.
-        private const int LargoBlockX = 3;
-        private const int LargoBlockZ = 4;
-
-        private static readonly string[] CustomerStreets =
-        {
-            "Rua das Jabuticabeiras", "Rua Padre Anselmo Duarte", "Rua dos Ipês Roxos", "Travessa Dona Zulmira",
-            "Rua Capitão Nogueira", "Rua das Hortênsias", "Rua Mestre Valentim", "Rua Tia Ciata",
-            "Rua do Cambuci Velho", "Rua Joaquim Pinheiro", "Rua das Paineiras", "Rua Professora Lúcia",
-            "Rua Seu Antônio Barbeiro", "Rua dos Tamoios", "Rua Santa Rita de Cássia", "Rua do Mercado Novo",
-            "Rua Coronel Ribeiro", "Rua das Mangueiras", "Rua Dona Benta", "Rua Menino Jesus",
-        };
-
-        private struct EdgeSpot
-        {
-            public bool Horizontal;
-            public int Street;
-            public int Segment;
-            public int Side;
-        }
-
-        private static float[] _cx;
-        private static float[] _hwx;
-        private static float[] _cz;
-        private static float[] _hwz;
-
-        private static float _span;
+        private static Transform _roadsRoot;
 
         [MenuItem("Jogo/Gerar cidade (Santo Amaro)")]
         public static void Build()
         {
             RenderSetup.Apply();
             TmpSetup.EnsureFallbackFont();
-            ComputeGrid();
+            OsmMap map = OsmMap.Load(OsmMap.DataPath);
 
             Directory.CreateDirectory("Assets/_Jogo/Scenes");
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             MeshStore.Begin();
-            GroundRenderers.Clear();
+            ResetState();
             Materials m = new Materials();
             var world = new GameObject("Cidade");
-            Transform roads = Group(world.transform, "Ruas");
+            _roadsRoot = Group(world.transform, "Ruas");
             Transform blocks = Group(world.transform, "Quarteiroes");
             Transform buildings = Group(world.transform, "Predios");
             Transform props = Group(world.transform, "Detalhes");
             Transform markers = Group(world.transform, "Marcadores");
             Transform potholes = Group(world.transform, "Buracos");
+            _signsRoot = Group(buildings, "Letreiros");
+            _detailsRoot = props;
 
-            BuildGround(world.transform, m);
-            BuildRoads(roads, m);
-            var random = new System.Random(2024);
-            List<EdgeSpot> restaurantSpots = RestaurantSpots();
-            BuildBlocks(blocks, buildings, props, m, random, restaurantSpots, out Vector3 largoCenter);
+            // Ruas do OSM -> grade -> quarteirões.
+            CollectRoads(map);
+            CapParallelRoads();
+            IndexNodes();
+            _raster = new CityRaster(map.HalfX, map.HalfZ);
+            PaintRoads(_raster, map);
+            ComputeBlocks();
+            PaintZones(map);
+            BuildGround(world.transform, map);
+            _graph = BuildGraph(world);
+            _trafficLoops = FindTrafficLoops();
 
-            RoadGraph graph = BuildGraph(world);
+            // Pavimento: asfalto, faixas e travessias, calçadas e pisos.
+            BuildRoadSurfaces(map);
+            BuildMarkings(map);
+            BuildSlabs();
+            BuildZoneSurfaces();
 
-            Place[] restaurants = BuildRestaurants(markers, m, restaurantSpots);
-            Place[] customers = BuildCustomers(markers, m, restaurantSpots);
-            List<Vector3> potholePositions = BuildPotholes(potholes, m, new System.Random(99), restaurants, customers);
+            // Prédios: pegadas do OSM, restaurantes, frente dos quarteirões e fundos.
+            PlaceOsmBuildings(map);
+            ChooseRestaurantSites(_graph);
+            Place[] restaurants = BuildRestaurants(markers, m);
+            Place[] customers = BuildCustomers(markers, m, restaurants);
+            FillFrontage();
+            FillInterior();
+            BuildLots();
+            BuildRestaurantBuildings(m);
+            BuildColliders(blocks);
+            DumpRaster();
 
-            Vector3 spawn = largoCenter + new Vector3(14f, 0.1f, -18f);
+            List<Vector3> potholePositions = BuildPotholes(potholes, new System.Random(99), restaurants, customers);
+            Vector3 spawn = ChooseSpawn(out float spawnYaw);
 
             // Pontos que mobiliário e carros parados evitam: marcadores, buracos e a saída da moto.
             var avoid = new List<Vector3>(potholePositions) { spawn };
@@ -107,11 +93,15 @@ namespace Entregador.Editor
                 avoid.Add(place.Position);
             }
 
-            BuildProps(props, new System.Random(55), avoid);
-            var map = world.AddComponent<CityMap>();
-            map.Configure(restaurants, customers, graph, spawn, 0f, Vector2.zero, _span);
+            BuildProps(props, new System.Random(55), avoid, map);
+            FinishBatches(blocks);
 
-            ArcadeBikeController bike = BikeFactory.Build(spawn, 0f);
+            var cityMap = world.AddComponent<CityMap>();
+            cityMap.Configure(restaurants, customers, _graph, spawn, spawnYaw, Vector2.zero, 2f * PlayableHalf);
+            cityMap.SetViewPoints(BuildViewPoints(map));
+            cityMap.SetBusLanes(BusLanes.ToArray());
+
+            ArcadeBikeController bike = BikeFactory.Build(spawn, spawnYaw);
             var tracker = bike.gameObject.AddComponent<DeliveryRunTracker>();
             tracker.Configure(bike);
 
@@ -124,7 +114,7 @@ namespace Entregador.Editor
             Camera main = BuildMainCamera(bike);
             RainEffect rain = BuildRain(main.transform);
             MinimapView minimap = BuildMinimap(bike);
-            RouteGuide route = BuildRoute(graph, bike);
+            RouteGuide route = BuildRoute(_graph, bike);
 
             var root = new GameObject("GameRoot");
             var tuning = root.AddComponent<GameTuning>();
@@ -132,10 +122,9 @@ namespace Entregador.Editor
             var ui = new GameObject("Interface").AddComponent<GameUI>();
             ui.transform.SetParent(root.transform, false);
             var flow = root.AddComponent<GameFlow>();
-            flow.Configure(map, bike, bike.GetComponent<BikeInput>(), tracker, route, main.GetComponent<FollowCamera>(), minimap, ui, tuning, sun, main);
+            flow.Configure(cityMap, bike, bike.GetComponent<BikeInput>(), tracker, route, main.GetComponent<FollowCamera>(), minimap, ui, tuning, sun, main);
             flow.AttachRain(rain);
             flow.AttachLook(look);
-
 
             MeshStore.Save();
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -159,57 +148,105 @@ namespace Entregador.Editor
             }
         }
 
-        // ---------- Grade ----------
-
-        private static void ComputeGrid()
+        private static void ResetState()
         {
-            _cx = new float[StreetCount];
-            _hwx = new float[StreetCount];
-            _cz = new float[StreetCount];
-            _hwz = new float[StreetCount];
-
-            for (int i = 0; i < StreetCount; i++)
-            {
-                _hwx[i] = i == AvenueIndex ? AvenueHalfWidth : StreetHalfWidth;
-                _hwz[i] = StreetHalfWidth;
-            }
-
-            for (int i = 1; i < StreetCount; i++)
-            {
-                _cx[i] = _cx[i - 1] + BlockSize + _hwx[i - 1] + _hwx[i];
-                _cz[i] = _cz[i - 1] + BlockSize + _hwz[i - 1] + _hwz[i];
-            }
-
-            float shiftX = _cx[StreetCount - 1] * 0.5f;
-            float shiftZ = _cz[StreetCount - 1] * 0.5f;
-
-            for (int i = 0; i < StreetCount; i++)
-            {
-                _cx[i] -= shiftX;
-                _cz[i] -= shiftZ;
-            }
-
-            _span = Mathf.Max(_cx[StreetCount - 1] - _cx[0], _cz[StreetCount - 1] - _cz[0]) + 2f * AvenueHalfWidth;
+            GroundRenderers.Clear();
+            GroundBatches.Clear();
+            BuildBatches.Clear();
+            Blocks.Clear();
+            BlocksByLabel.Clear();
+            Roads.Clear();
+            Junctions.Clear();
+            NodeUsers.Clear();
+            GraphEdges.Clear();
+            RestaurantSites.Clear();
+            PendingLots.Clear();
+            Poles.Clear();
+            BumpPositions.Clear();
+            _borrachariaDone = false;
+            _footprintMaterial = null;
+            LoopSegments.Clear();
+            BorderViews.Clear();
+            LargoSolids.Clear();
+            _avenueAnchorSet = false;
+            _fountain = LargoCenter;
+            System.Array.Clear(KindStats, 0, KindStats.Length);
+            System.Array.Clear(KindCount, 0, KindCount.Length);
         }
 
-        private static float BlockX0(int i) => _cx[i] + _hwx[i];
+        /// <summary>Com JOGO_DEBUG_DIR definido, grava um PNG da grade (ruas por classe, quarteirões, zonas e ocupação) para conferir o layout.</summary>
+        private static void DumpRaster()
+        {
+            string dir = Environment.GetEnvironmentVariable("JOGO_DEBUG_DIR");
 
-        private static float BlockX1(int i) => _cx[i + 1] - _hwx[i + 1];
+            if (string.IsNullOrEmpty(dir))
+            {
+                return;
+            }
 
-        private static float BlockZ0(int j) => _cz[j] + _hwz[j];
+            CityRaster r = _raster;
+            const int step = 2;
+            int w = r.W / step;
+            int h = r.H / step;
+            var texture = new Texture2D(w, h, TextureFormat.RGB24, false);
+            Color[] roadColors =
+            {
+                new Color(0.55f, 0.75f, 0.45f), new Color(0.5f, 0.5f, 0.55f), new Color(0.2f, 0.7f, 0.8f), new Color(0.15f, 0.15f, 0.2f),
+                new Color(0.9f, 0.6f, 0.1f), new Color(0.85f, 0.1f, 0.1f),
+            };
 
-        private static float BlockZ1(int j) => _cz[j + 1] - _hwz[j + 1];
+            for (int iz = 0; iz < h; iz++)
+            {
+                for (int ix = 0; ix < w; ix++)
+                {
+                    int i = iz * step * r.W + ix * step;
+                    Color c;
+
+                    if (r.Block[i] == 0)
+                    {
+                        c = roadColors[r.Road[i]];
+                    }
+                    else if (r.Occ[i] == 2)
+                    {
+                        c = new Color(0.2f, 0.2f, 0.9f);
+                    }
+                    else if (r.Occ[i] == 1)
+                    {
+                        c = new Color(0.45f, 0.35f, 0.3f);
+                    }
+                    else
+                    {
+                        c = r.Zone[i] == ZoneLargo ? new Color(0.95f, 0.85f, 0.5f) : r.Zone[i] != 0 ? new Color(0.3f, 0.6f, 0.3f) : new Color(0.8f, 0.8f, 0.78f);
+                    }
+
+                    texture.SetPixel(ix, iz, c);
+                }
+            }
+
+            Directory.CreateDirectory(dir);
+            File.WriteAllBytes(Path.Combine(dir, "grade.png"), texture.EncodeToPNG());
+            Object.DestroyImmediate(texture);
+        }
+
+        // ---------- Chão ----------
+
+        private static void BuildGround(Transform world, OsmMap map)
+        {
+            float half = Mathf.Max(map.HalfX, map.HalfZ) + 400f;
+
+            // O collider do chão fica no y = 0; o visual (grama) um pouco abaixo, para as ruas aparecerem por cima sem brigar de profundidade.
+            var ground = new GameObject("Chao");
+            ground.transform.SetParent(world, false);
+            ground.transform.position = new Vector3(0f, -0.5f, 0f);
+            ground.AddComponent<BoxCollider>().size = new Vector3(half * 2f, 1f, half * 2f);
+
+            var visual = new MeshBatch();
+            visual.FlatQuad(CityStyle.Lawn(), new Vector3(-half, -0.04f, -half), new Vector3(half, -0.04f, -half), new Vector3(half, -0.04f, half), new Vector3(-half, -0.04f, half));
+            visual.Build(world, "ChaoVisual", false);
+        }
 
         private sealed class Materials
         {
-            public Material Grass = CityMaterials.Lit("Grama", new Color(0.36f, 0.5f, 0.3f));
-            public Material Sidewalk = CityMaterials.Lit("Calcada", new Color(0.62f, 0.61f, 0.58f));
-            public Material Yard = CityMaterials.Lit("Quintal", new Color(0.4f, 0.55f, 0.3f));
-            public Material Courtyard = CityMaterials.Lit("Patio", new Color(0.42f, 0.42f, 0.44f));
-            public Material Plaza = CityMaterials.Lit("Praca", new Color(0.55f, 0.49f, 0.38f));
-            public Material BusLane = CityMaterials.Lit("Corredor", new Color(0.62f, 0.25f, 0.22f));
-            public Material Pothole = CityMaterials.Lit("Buraco", new Color(0.06f, 0.06f, 0.07f));
-            public Material Fountain = CityMaterials.Lit("Fonte", new Color(0.55f, 0.65f, 0.7f));
             public Material RestaurantPad = CityMaterials.Unlit("MarcadorRestaurante", new Color(1f, 0.55f, 0.1f));
             public Material CustomerPad = CityMaterials.Unlit("MarcadorCliente", new Color(0.1f, 0.85f, 0.75f));
             public Material Beam = CityMaterials.Unlit("Feixe", new Color(1f, 1f, 0.3f));
@@ -228,284 +265,6 @@ namespace Entregador.Editor
             go.transform.SetParent(parent, false);
 
             return go.transform;
-        }
-
-        // ---------- Grafo ----------
-
-        private static RoadGraph BuildGraph(GameObject world)
-        {
-            var nodes = new Vector3[StreetCount * StreetCount];
-            var from = new List<int>();
-            var to = new List<int>();
-
-            for (int i = 0; i < StreetCount; i++)
-            {
-                for (int j = 0; j < StreetCount; j++)
-                {
-                    nodes[i * StreetCount + j] = new Vector3(_cx[i], 0f, _cz[j]);
-
-                    if (j + 1 < StreetCount)
-                    {
-                        from.Add(i * StreetCount + j);
-                        to.Add(i * StreetCount + j + 1);
-                    }
-
-                    if (i + 1 < StreetCount)
-                    {
-                        from.Add(i * StreetCount + j);
-                        to.Add((i + 1) * StreetCount + j);
-                    }
-                }
-            }
-
-            var graph = world.AddComponent<RoadGraph>();
-            graph.Configure(nodes, from.ToArray(), to.ToArray());
-
-            return graph;
-        }
-
-        // ---------- Restaurantes e endereços ----------
-
-        private static Vector3 SpotPosition(EdgeSpot spot)
-        {
-            if (spot.Horizontal)
-            {
-                float x = (_cx[spot.Segment] + _cx[spot.Segment + 1]) * 0.5f;
-
-                return new Vector3(x, 0f, _cz[spot.Street] + spot.Side * (_hwz[spot.Street] - 1.5f));
-            }
-
-            float z = (_cz[spot.Segment] + _cz[spot.Segment + 1]) * 0.5f;
-
-            return new Vector3(_cx[spot.Street] + spot.Side * (_hwx[spot.Street] - 1.5f), 0f, z);
-        }
-
-        private static List<EdgeSpot> RestaurantSpots() => new List<EdgeSpot>
-        {
-            new EdgeSpot { Horizontal = false, Street = LargoBlockX, Segment = LargoBlockZ, Side = -1 },
-            new EdgeSpot { Horizontal = true, Street = LargoBlockZ + 1, Segment = LargoBlockX, Side = 1 },
-            new EdgeSpot { Horizontal = true, Street = LargoBlockZ, Segment = LargoBlockX, Side = -1 },
-            new EdgeSpot { Horizontal = false, Street = AvenueIndex, Segment = LargoBlockZ, Side = 1 },
-        };
-
-        /// <summary>Marcadores e letreiros dos restaurantes. O prédio, os toldos e a faixa colorida saem em BuildBlocks.</summary>
-        private static Place[] BuildRestaurants(Transform markers, Materials m, List<EdgeSpot> spots)
-        {
-            string[] names = { "Pastelaria do Largo", "Pizzaria Bella Amaro", "Marmitaria da Dona Cida", "Hamburgueria Zona Sul" };
-            var places = new Place[names.Length];
-
-            for (int k = 0; k < names.Length; k++)
-            {
-                Vector3 position = SpotPosition(spots[k]);
-                GameObject beam = BuildMarker(markers, names[k], position, m.RestaurantPad, m);
-                places[k] = new Place(names[k], position, beam);
-            }
-
-            return places;
-        }
-
-        private static Place[] BuildCustomers(Transform markers, Materials m, List<EdgeSpot> restaurantSpots)
-        {
-            var random = new System.Random(7);
-            var candidates = new List<EdgeSpot>();
-
-            for (int street = 0; street < StreetCount; street++)
-            {
-                for (int segment = 0; segment < BlockCount; segment++)
-                {
-                    foreach (int side in new[] { -1, 1 })
-                    {
-                        // Vertical (não a avenida) e horizontal; só lados que têm quarteirão.
-                        if (street + side >= 0 && street + side < StreetCount)
-                        {
-                            if (street != AvenueIndex)
-                            {
-                                candidates.Add(new EdgeSpot { Horizontal = false, Street = street, Segment = segment, Side = side });
-                            }
-
-                            candidates.Add(new EdgeSpot { Horizontal = true, Street = street, Segment = segment, Side = side });
-                        }
-                    }
-                }
-            }
-
-            // Embaralha de forma determinística.
-            for (int i = candidates.Count - 1; i > 0; i--)
-            {
-                int k = random.Next(i + 1);
-                (candidates[i], candidates[k]) = (candidates[k], candidates[i]);
-            }
-
-            // Endereços espalhados de perto a longe do largo (onde ficam os restaurantes), para existir uma rota
-            // para qualquer distância de pedido: o alvo de cada endereço sobe de MinCustomerMeters ao mais distante.
-            var chosen = new List<Vector3>();
-            var places = new List<Place>();
-            var restaurantPositions = restaurantSpots.ConvertAll(SpotPosition);
-            Vector3 largoCenter = new Vector3((BlockX0(LargoBlockX) + BlockX1(LargoBlockX)) * 0.5f, 0f, (BlockZ0(LargoBlockZ) + BlockZ1(LargoBlockZ)) * 0.5f);
-
-            var pool = new List<(Vector3 position, float distance)>();
-
-            foreach (EdgeSpot spot in candidates)
-            {
-                Vector3 position = SpotPosition(spot);
-                bool tooClose = Vector3.Distance(position, largoCenter) < 70f;
-
-                foreach (Vector3 other in restaurantPositions)
-                {
-                    tooClose |= Vector3.Distance(position, other) < 80f;
-                }
-
-                if (!tooClose)
-                {
-                    pool.Add((position, Mathf.Abs(position.x - largoCenter.x) + Mathf.Abs(position.z - largoCenter.z)));
-                }
-            }
-
-            float maxDistance = 0f;
-
-            foreach (var entry in pool)
-            {
-                maxDistance = Mathf.Max(maxDistance, entry.distance);
-            }
-
-            for (int k = 0; k < CustomerStreets.Length; k++)
-            {
-                float target = Mathf.Lerp(MinCustomerMeters, maxDistance, k / (float)(CustomerStreets.Length - 1));
-                int best = -1;
-                float bestError = float.MaxValue;
-
-                for (int c = 0; c < pool.Count; c++)
-                {
-                    bool tooClose = false;
-
-                    foreach (Vector3 other in chosen)
-                    {
-                        tooClose |= Vector3.Distance(pool[c].position, other) < 60f;
-                    }
-
-                    float error = Mathf.Abs(pool[c].distance - target);
-
-                    if (!tooClose && error < bestError)
-                    {
-                        bestError = error;
-                        best = c;
-                    }
-                }
-
-                if (best < 0)
-                {
-                    break;
-                }
-
-                Vector3 position = pool[best].position;
-                chosen.Add(position);
-                string name = $"{CustomerStreets[places.Count]}, {random.Next(20, 900)}";
-                GameObject beam = BuildMarker(markers, name, position, m.CustomerPad, m);
-                places.Add(new Place(name, position, beam));
-            }
-
-            if (places.Count < CustomerStreets.Length)
-            {
-                throw new InvalidOperationException($"Só foi possível posicionar {places.Count} endereços de cliente.");
-            }
-
-            return places.ToArray();
-        }
-
-        /// <summary>Marcador no chão (disco) com um feixe de luz alto, que só acende quando é o alvo.</summary>
-        private static GameObject BuildMarker(Transform parent, string name, Vector3 position, Material padMaterial, Materials m)
-        {
-            Transform holder = Group(parent, "Marcador_" + name);
-            holder.position = position;
-            CityPieces.Cylinder(holder, "Disco", position + Vector3.up * 0.06f, 3.5f, 0.08f, padMaterial);
-            GameObject beam = CityPieces.Cylinder(holder, "Feixe", position + Vector3.up * 15f, 0.7f, 30f, m.Beam);
-            beam.SetActive(false);
-
-            return beam;
-        }
-
-        // ---------- Buracos ----------
-
-        private static List<Vector3> BuildPotholes(Transform parent, Materials m, System.Random random, Place[] restaurants, Place[] customers)
-        {
-            var positions = new List<Vector3>();
-            int made = 0;
-            int guard = 0;
-
-            while (made < 14 && guard++ < 800)
-            {
-                bool horizontal = random.Next(2) == 0;
-                int street = random.Next(StreetCount);
-                int segment = random.Next(BlockCount);
-
-                if (!horizontal && street == AvenueIndex)
-                {
-                    continue;
-                }
-
-                float t = 0.3f + 0.4f * (float)random.NextDouble();
-                float lateral = ((float)random.NextDouble() - 0.5f) * 5f;
-                Vector3 position = horizontal
-                    ? new Vector3(Mathf.Lerp(_cx[segment], _cx[segment + 1], t), 0f, _cz[street] + lateral)
-                    : new Vector3(_cx[street] + lateral, 0f, Mathf.Lerp(_cz[segment], _cz[segment + 1], t));
-
-                bool nearMarker = false;
-
-                foreach (Place place in restaurants)
-                {
-                    nearMarker |= Vector3.Distance(place.Position, position) < 25f;
-                }
-
-                foreach (Place place in customers)
-                {
-                    nearMarker |= Vector3.Distance(place.Position, position) < 25f;
-                }
-
-                if (nearMarker)
-                {
-                    continue;
-                }
-
-                // Buraco: remendo de asfalto escuro, borda esfarelada e a cratera quase preta no meio (irregulares).
-                var patch = new MeshBatch();
-                float spin = (float)random.NextDouble() * 6f;
-                float[] outer = new float[10];
-                float[] mid = new float[10];
-                float[] pit = new float[10];
-
-                for (int v = 0; v < 10; v++)
-                {
-                    float jitter = 0.78f + 0.4f * (float)random.NextDouble();
-                    outer[v] = 1.55f * jitter;
-                    mid[v] = 1.15f * (0.8f + 0.4f * (float)random.NextDouble());
-                    pit[v] = 0.7f * (0.7f + 0.5f * (float)random.NextDouble());
-                }
-
-                patch.Fan(CityStyle.AsphaltPatch(), position + Vector3.up * 0.012f, outer, spin);
-                patch.Fan(PbrMaterials.Flat("BuracoBorda", new Color(0.09f, 0.09f, 0.1f), 0.1f), position + Vector3.up * 0.016f, mid, spin + 0.3f);
-                patch.Fan(PbrMaterials.Flat("BuracoFundo", new Color(0.025f, 0.025f, 0.03f), 0.05f), position + Vector3.up * 0.02f, pit, spin + 0.7f);
-                GameObject hole = patch.Build(parent, "Buraco" + made, false);
-                GameObject zone = new GameObject("ZonaBuraco" + made);
-                zone.transform.SetParent(hole.transform.parent, false);
-                zone.transform.position = position + Vector3.up * 1f;
-                var box = zone.AddComponent<BoxCollider>();
-                box.isTrigger = true;
-                box.size = new Vector3(3.4f, 2f, 3.4f);
-                zone.AddComponent<PotholeZone>();
-                positions.Add(position);
-
-                // Cones de obra em volta do buraco.
-                for (int c = 0; c < 3; c++)
-                {
-                    float angle = (c * 120f + 40f * (float)random.NextDouble()) * Mathf.Deg2Rad;
-                    Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 2.6f;
-                    CityPieces.Model(hole.transform.parent, Kit.CityKitRoads, "construction-cone", position + offset + Vector3.up * 0.04f, 0f, 9f).name = "Cone";
-                }
-
-                made++;
-            }
-
-            return positions;
         }
 
         // ---------- Luz, câmeras, rota ----------
@@ -540,7 +299,7 @@ namespace Entregador.Editor
             camera.orthographicSize = 120f;
             camera.nearClipPlane = 1f;
             camera.farClipPlane = 400f;
-            camera.cullingMask = ~(1 << 2);
+            camera.cullingMask = ~((1 << 2) | (1 << BuildingLayer));
             camera.depth = -10f;
             var data = camera.GetUniversalAdditionalCameraData();
             data.renderShadows = false;
@@ -690,17 +449,6 @@ namespace Entregador.Editor
             EditorUtility.SetDirty(material);
 
             return material;
-        }
-
-        private static void MarkStatic(Transform root)
-        {
-            foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
-            {
-                if (child.GetComponent<RoadGraph>() == null && child.GetComponent<CityMap>() == null && child.GetComponent<FaceCamera>() == null && child.gameObject.activeSelf)
-                {
-                    GameObjectUtility.SetStaticEditorFlags(child.gameObject, StaticEditorFlags.BatchingStatic);
-                }
-            }
         }
     }
 }

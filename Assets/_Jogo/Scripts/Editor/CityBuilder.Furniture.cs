@@ -1,3 +1,4 @@
+using Entregador.Game;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -5,7 +6,7 @@ namespace Entregador.Editor
 {
     /// <summary>
     /// Mobiliário urbano de São Paulo: postes de concreto com fios, luminárias, lixeiras laranja, pontos de ônibus, bueiros,
-    /// árvores, semáforos, placas de PARE, caçambas, carros parados e o trânsito. Tudo vira malha fundida no quarteirão.
+    /// árvores, semáforos, placas de PARE, caçambas, lombadas, carros parados e o trânsito. Tudo vira malha fundida por pedaço do mapa.
     /// </summary>
     public static partial class CityBuilder
     {
@@ -21,13 +22,13 @@ namespace Entregador.Editor
         }
 
         private static readonly List<PoleInfo> Poles = new List<PoleInfo>();
-        private static Transform _blocksRoot;
 
-        /// <summary>Distância do centro da rua até o meio de um carro estacionado (rente ao meio-fio).</summary>
-        private static float ParkOffset(float halfWidth) => halfWidth - 1.6f;
+        /// <summary>Posições das lombadas (carros parados e mobiliário as evitam).</summary>
+        private static readonly List<Vector3> BumpPositions = new List<Vector3>();
 
-        /// <summary>Faixa de trânsito (distância do centro da rua): na avenida a pista externa.</summary>
-        private static float LaneOffset(bool avenue) => avenue ? 8f : 2f;
+        private static Transform _signalRoot;
+
+        // ---------- Peças ----------
 
         private static bool NearAny(Vector3 position, List<Vector3> points, float distance)
         {
@@ -54,8 +55,6 @@ namespace Entregador.Editor
             capsule.radius = radius;
             capsule.height = height;
         }
-
-        // ---------- Peças ----------
 
         /// <summary>Árvore de copa densa: tronco afilado e 5 blobs irregulares com folhagem texturizada.</summary>
         private static void Tree(MeshBatch b, Vector3 basePosition, float height, int seed, bool large, bool lite = false)
@@ -155,63 +154,6 @@ namespace Entregador.Editor
             }
         }
 
-        private static void BuildWires()
-        {
-            var random = new System.Random(77);
-            var groups = new Dictionary<int, List<PoleInfo>>();
-
-            foreach (PoleInfo pole in Poles)
-            {
-                if (!groups.TryGetValue(pole.Key, out List<PoleInfo> list))
-                {
-                    list = new List<PoleInfo>();
-                    groups[pole.Key] = list;
-                }
-
-                list.Add(pole);
-            }
-
-            foreach (List<PoleInfo> list in groups.Values)
-            {
-                list.Sort((a, b) => a.Axis.CompareTo(b.Axis));
-
-                for (int k = 0; k + 1 < list.Count; k++)
-                {
-                    float distance = Vector3.Distance(list[k].Pos, list[k + 1].Pos);
-
-                    if (distance < 75f)
-                    {
-                        SpanWires(list[k], list[k + 1], random);
-                    }
-                }
-            }
-
-            // Travessias: de um lado da rua ao outro, onde há postes quase de frente um para o outro.
-            foreach (PoleInfo a in Poles)
-            {
-                if ((a.Key & 1) == 0)
-                {
-                    continue;
-                }
-
-                foreach (PoleInfo c in Poles)
-                {
-                    if (c.Key == a.Key - 1 + 0 && c.Key / 10 == a.Key / 10 && Mathf.Abs(c.Axis - a.Axis) < 6f)
-                    {
-                        float length = Vector3.Distance(a.Pos, c.Pos);
-
-                        for (int k = 0; k < 2; k++)
-                        {
-                            float y = 8.5f - 0.6f * k;
-                            Wires(a.Batch, a.Pos + Vector3.up * y, c.Pos + Vector3.up * y, 0.02f * length, 5, 0.035f, Vector3.zero);
-                        }
-
-                        break;
-                    }
-                }
-            }
-        }
-
         private static void Bin(MeshBatch b, Vector3 p)
         {
             b.Frustum(CityStyle.IronBlack(), p, 0.03f, 0.03f, 0.95f, 5, false);
@@ -255,228 +197,6 @@ namespace Entregador.Editor
             go.AddComponent<BoxCollider>().size = new Vector3(width, 2.2f, 0.5f);
         }
 
-        // ---------- Montagem ----------
-
-        private static void PlaceEdgeFurniture(Edge e, List<Vector3> avoid, Transform postsRoot, Transform busRoot)
-        {
-            MeshBatch b = BlockBatches[e.Block];
-            var r = new System.Random(e.Block * 13 + e.Key);
-            var placed = new List<Vector3>();
-            float poleOffset = FrontInset - 0.75f;
-
-            // Postes (concreto, a 0,75 m do meio-fio) a cada ~34 m.
-            for (float t = 8f + (float)r.NextDouble() * 12f; t < e.Length - 5f; t += 31f + (float)r.NextDouble() * 6f)
-            {
-                Vector3 p = e.Start + e.Along * t + e.Facing * poleOffset;
-                p.y = CurbHeight;
-
-                if (NearAny(p, avoid, 6.5f))
-                {
-                    continue;
-                }
-
-                UtilityPole(b, p, e.Facing, r);
-                SolidCapsule(postsRoot, "Poste", p, 0.2f, 3f);
-                placed.Add(p);
-                Poles.Add(new PoleInfo { Pos = p, Key = e.Key, Axis = e.Horizontal ? p.x : p.z, Batch = b, Facing = e.Facing });
-            }
-
-            // Lixeiras laranja nas fachadas comerciais.
-            if (e.Commercial)
-            {
-                for (float t = 14f + (float)r.NextDouble() * 10f; t < e.Length - 6f; t += 38f)
-                {
-                    Vector3 p = e.Start + e.Along * t + e.Facing * (FrontInset - 0.6f);
-                    p.y = CurbHeight;
-
-                    if (!NearAny(p, avoid, 6f) && !NearAny(p, placed, 3.5f))
-                    {
-                        Bin(b, p);
-                        placed.Add(p);
-                    }
-                }
-            }
-
-            // Árvores de calçada nas ruas residenciais (e poucas nas comerciais).
-            int trees = e.Commercial ? Mathf.RoundToInt(e.Length / 60f) : Mathf.Max(1, Mathf.RoundToInt(e.Length / 30f));
-
-            for (int k = 0; k < trees; k++)
-            {
-                float at = e.Length * (k + 0.5f + ((float)r.NextDouble() - 0.5f) * 0.4f) / trees;
-                Vector3 p = e.Start + e.Along * at + e.Facing * 1.6f;
-                p.y = CurbHeight;
-
-                if (!NearAny(p, avoid, 8f) && !NearAny(p, placed, 4.5f))
-                {
-                    Tree(b, p, 5f + 1.6f * (float)r.NextDouble(), r.Next(1000), false, e.Lite);
-                    placed.Add(p);
-                }
-            }
-
-            // Bueiros na sarjeta.
-            int drains = 1 + r.Next(2);
-
-            for (int k = 0; k < drains; k++)
-            {
-                float t = e.Length * (0.15f + 0.7f * (float)r.NextDouble());
-                Vector3 p = e.Start + e.Along * t + e.Facing * (FrontInset + 0.35f);
-                p.y = 0f;
-                Drain(b, p, e.Along);
-            }
-
-            // Pontos de ônibus nos dois lados da avenida.
-            if (e.AvenueRow && e.Length > 60f && e.Commercial)
-            {
-                float t = e.Length * (0.3f + 0.4f * (float)r.NextDouble());
-                Vector3 p = e.Start + e.Along * t + e.Facing * (FrontInset - 1.1f);
-                p.y = CurbHeight;
-
-                if (!NearAny(p, placed, 6f) && !NearAny(p, avoid, 12f))
-                {
-                    BusStop(busRoot, b, p, e.Facing, r.Next(7));
-                }
-            }
-        }
-
-        private static void BuildProps(Transform parent, System.Random random, List<Vector3> avoid)
-        {
-            Transform posts = Group(parent, "Postes");
-            Transform signs = Group(parent, "Placas");
-            Transform cars = Group(parent, "CarrosParados");
-            Transform dumpsters = Group(parent, "Cacambas");
-            Transform bus = Group(parent, "PontosDeOnibus");
-            var parked = new List<Vector3>();
-            Poles.Clear();
-            avoid.AddRange(BumpPositions);
-
-            int Sum()
-            {
-                int n = 0;
-
-                foreach (MeshBatch mb in BlockBatches.Values)
-                {
-                    n += mb.TriangleCount;
-                }
-
-                return n;
-            }
-
-            int buildingsTris = Sum();
-            Debug.Log("[CityBuilder] Tris por tipo (sobrado completo/lite, comércio c/l, torre c/l): " + string.Join(",", KindStats) + " lotes " + string.Join(",", KindCount));
-
-            foreach (Edge e in Edges)
-            {
-                PlaceEdgeFurniture(e, avoid, posts, bus);
-            }
-
-            int furnitureTris = Sum();
-            BuildWires();
-            Debug.Log($"[CityBuilder] Triângulos: prédios+calçadas {buildingsTris}, mobiliário {furnitureTris - buildingsTris}, fios {Sum() - furnitureTris}");
-
-            // Semáforos nos cruzamentos da avenida e placas de PARE nas ruas pequenas.
-            var signals = new MeshBatch();
-
-            for (int j = 0; j < StreetCount; j++)
-            {
-                Vector3 center = new Vector3(_cx[AvenueIndex], CurbHeight, _cz[j]);
-
-                foreach (int sign in new[] { 1, -1 })
-                {
-                    Vector3 corner = center + new Vector3(sign * (AvenueHalfWidth + 0.5f), 0f, sign * (StreetHalfWidth + 0.5f));
-                    TrafficLight(signals, corner, new Vector3(-sign, 0f, 0f), new Vector3(0f, 0f, sign), j + sign);
-                    SolidCapsule(signs, "Semaforo", corner, 0.2f, 3f);
-                }
-            }
-
-            for (int k = 0; k < 14; k++)
-            {
-                int i = random.Next(StreetCount);
-
-                if (i == AvenueIndex || i == AvenueIndex - 1 || i == AvenueIndex + 1)
-                {
-                    continue;
-                }
-
-                int j = random.Next(StreetCount);
-                Vector3 corner = new Vector3(_cx[i] + StreetHalfWidth + 0.6f, CurbHeight, _cz[j] + StreetHalfWidth + 0.6f);
-                StopSign(signals, corner, new Vector3(0f, 0f, 1f));
-                SolidCapsule(signs, "PlacaPare", corner, 0.15f, 3f);
-            }
-
-            // Caçambas de entulho na calçada.
-            Material skip = PbrMaterials.Surface("rust", "Cacamba", new Color(0.9f, 0.7f, 0.1f));
-            var skipBatch = new MeshBatch();
-
-            for (int k = 0; k < 9; k++)
-            {
-                int i = random.Next(BlockCount);
-                int j = random.Next(BlockCount);
-
-                if (i == LargoBlockX && j == LargoBlockZ)
-                {
-                    continue;
-                }
-
-                float along = 0.2f + 0.6f * (float)random.NextDouble();
-                bool west = random.Next(2) == 0;
-                float x = west ? BlockX0(i) + 2.0f : BlockX1(i) - 2.0f;
-                float z = Mathf.Lerp(BlockZ0(j), BlockZ1(j), along);
-                var position = new Vector3(x, CurbHeight, z);
-
-                if (NearAny(position, avoid, 14f))
-                {
-                    continue;
-                }
-
-                skipBatch.AxisBox(skip, position + Vector3.up * 0.55f, new Vector3(1.8f, 1.1f, 4.2f));
-                var go = new GameObject("Cacamba");
-                go.transform.SetParent(dumpsters, false);
-                go.transform.position = position + Vector3.up * 0.55f;
-                go.AddComponent<BoxCollider>().size = new Vector3(1.8f, 1.1f, 4.2f);
-            }
-
-            skipBatch.Build(dumpsters, "CacambasVisual");
-
-            // Carros estacionados, rente ao meio-fio, no sentido do trânsito (mão direita).
-            for (int i = 0; i < StreetCount; i++)
-            {
-                for (int j = 0; j < BlockCount; j++)
-                {
-                    ParkAlong(cars, random, avoid, parked, true, i, j);
-                }
-            }
-
-            for (int j = 0; j < StreetCount; j++)
-            {
-                for (int i = 0; i < BlockCount; i++)
-                {
-                    ParkAlong(cars, random, avoid, parked, false, j, i);
-                }
-            }
-
-            signals.Build(signs, "SinalizacaoVisual");
-            FinishBlocks();
-        }
-
-        /// <summary>Grava a malha de cada quarteirão e registra os renderers que molham na chuva.</summary>
-        private static void FinishBlocks()
-        {
-            int total = 0;
-
-            foreach (var pair in BlockBatches)
-            {
-                total += pair.Value.TriangleCount;
-                GameObject go = pair.Value.Build(_blocksRoot, $"Quarteirao_{pair.Key / 100}_{pair.Key % 100}");
-
-                if (go != null)
-                {
-                    GroundRenderers.Add(go.GetComponent<Renderer>());
-                }
-            }
-
-            Debug.Log($"[CityBuilder] Triângulos nos quarteirões: {total}; postes: {Poles.Count}");
-        }
-
         private static void TrafficLight(MeshBatch b, Vector3 corner, Vector3 armDirection, Vector3 headFacing, int seed)
         {
             b.Frustum(CityStyle.IronBlack(), corner, 0.1f, 0.08f, 5.2f, 8, true);
@@ -517,87 +237,642 @@ namespace Entregador.Editor
             b.Rect(CityStyle.PaintWhite(), center + facing * 0.01f - right * 0.2f - Vector3.up * 0.04f, right, Vector3.up, 0.4f, 0.08f);
         }
 
-        private static void ParkAlong(Transform parent, System.Random random, List<Vector3> avoid, List<Vector3> parked, bool vertical, int street, int segment)
+        // ---------- Montagem ----------
+
+        private delegate void EdgeVisitor(Block block, int index, Vector2 a, Vector2 dir, Vector2 front, float length, RoadClass cls);
+
+        /// <summary>Visita as arestas de quarteirão que encaram uma rua: a é o começo, dir segue a aresta e front aponta para a rua.</summary>
+        private static void ForEachEdge(EdgeVisitor visit)
         {
-            int count = random.Next(0, 3);
-            float halfWidth = vertical ? _hwx[street] : _hwz[street];
-
-            for (int n = 0; n < count; n++)
+            foreach (Block block in Blocks)
             {
-                float t = 0.2f + 0.6f * (float)random.NextDouble();
-                int side = random.Next(2) == 0 ? 1 : -1;
-                string model = ParkedCarModels[random.Next(ParkedCarModels.Length)];
-                int paint = random.Next(CarPaint.Colors.Length);
-                Vector3 position;
-                float yaw;
+                int n = block.Poly.Count;
 
-                if (vertical)
+                for (int e = 0; e < n; e++)
                 {
-                    position = new Vector3(_cx[street] + side * ParkOffset(halfWidth), 0.02f, Mathf.Lerp(_cz[segment], _cz[segment + 1], t));
-                    yaw = side > 0 ? 0f : 180f;
+                    Vector2 a = block.Poly[e];
+                    Vector2 b = block.Poly[(e + 1) % n];
+                    float length = Vector2.Distance(a, b);
+
+                    if (block.EdgeClass[e] == RoadClass.None || length < 3f)
+                    {
+                        continue;
+                    }
+
+                    Vector2 dir = (b - a) / length;
+                    visit(block, e, a, dir, Geo.Right(dir), length, block.EdgeClass[e]);
                 }
-                else
+            }
+        }
+
+        private static void BuildProps(Transform parent, System.Random random, List<Vector3> avoid, OsmMap map)
+        {
+            Transform posts = Group(parent, "Postes");
+            _signalRoot = Group(parent, "Placas");
+            Transform cars = Group(parent, "CarrosParados");
+            Transform dumpsters = Group(parent, "Cacambas");
+            Transform bus = Group(parent, "PontosDeOnibus");
+            Poles.Clear();
+            avoid.AddRange(BumpPositions);
+            var placed = new List<Vector3>();
+
+            BuildLargoProps(parent, avoid);
+            BuildSignals(map);
+
+            // Postes, lixeiras, árvores de calçada e bueiros ao longo de cada frente de quarteirão.
+            ForEachEdge((block, e, a, dir, front, length, cls) =>
+            {
+                var r = new System.Random(block.Label * 131 + e);
+                bool commercial = cls >= RoadClass.Tertiary || cls == RoadClass.Pedestrian || Vector2.Distance(a, LargoCenter) < 160f;
+                bool lite = Vector2.Distance(a, LargoCenter) > LiteRadius;
+                int key = block.Label * 1000 + e;
+                Vector3 front3 = Geo.V3(front);
+
+                for (float t = 6f + (float)r.NextDouble() * 10f; t < length - 4f; t += 31f + (float)r.NextDouble() * 6f)
                 {
-                    position = new Vector3(Mathf.Lerp(_cx[segment], _cx[segment + 1], t), 0.02f, _cz[street] + side * ParkOffset(halfWidth));
-                    yaw = side < 0 ? 90f : 270f;
+                    Vector2 p2 = a + dir * t - front * 0.75f;
+                    Vector3 p = Geo.V3(p2, CurbHeight);
+
+                    if (NearAny(p, avoid, 6.5f) || NearAny(p, placed, 5f) || _raster.Occ[_raster.At(p2)] != 0)
+                    {
+                        continue;
+                    }
+
+                    MeshBatch b = BuildBatch(p);
+                    UtilityPole(b, p, front3, r);
+                    SolidCapsule(posts, "Poste", p, 0.2f, 3f);
+                    placed.Add(p);
+                    Poles.Add(new PoleInfo { Pos = p, Key = key, Axis = t, Batch = b, Facing = front3 });
                 }
 
-                if (NearAny(position, avoid, 16f) || NearAny(position, parked, 8f))
+                if (commercial)
+                {
+                    for (float t = 14f + (float)r.NextDouble() * 10f; t < length - 6f; t += 38f)
+                    {
+                        Vector2 p2 = a + dir * t - front * 0.6f;
+                        Vector3 p = Geo.V3(p2, CurbHeight);
+
+                        if (!NearAny(p, avoid, 6f) && !NearAny(p, placed, 3.5f) && _raster.Occ[_raster.At(p2)] == 0)
+                        {
+                            Bin(BuildBatch(p), p);
+                            placed.Add(p);
+                        }
+                    }
+                }
+
+                int trees = commercial ? Mathf.RoundToInt(length / 60f) : Mathf.Max(1, Mathf.RoundToInt(length / 30f));
+
+                for (int k = 0; k < trees; k++)
+                {
+                    float at = length * (k + 0.5f + ((float)r.NextDouble() - 0.5f) * 0.4f) / trees;
+                    Vector2 p2 = a + dir * at - front * 1.4f;
+                    Vector3 p = Geo.V3(p2, CurbHeight);
+
+                    if (_raster.DistAt(p2) > 0.7f && _raster.ZoneAt(p2) == 0 && _raster.Occ[_raster.At(p2)] == 0 && !NearAny(p, avoid, 8f) && !NearAny(p, placed, 4.5f))
+                    {
+                        Tree(BuildBatch(p), p, 5f + 1.6f * (float)r.NextDouble(), r.Next(1000), false, lite);
+                        placed.Add(p);
+                    }
+                }
+
+                int drains = 1 + r.Next(2);
+
+                for (int k = 0; k < drains; k++)
+                {
+                    float t = length * (0.15f + 0.7f * (float)r.NextDouble());
+                    Vector2 p2 = a + dir * t + front * 0.35f;
+
+                    if (!NearJunction(p2, 0f))
+                    {
+                        Drain(GroundBatch(Geo.V3(p2)), Geo.V3(p2), Geo.V3(dir));
+                    }
+                }
+            });
+
+            BuildBusStops(map, bus, avoid, placed);
+            BuildTrees(map, posts, avoid, placed);
+
+            // Caçambas de entulho na calçada.
+            Material skip = PbrMaterials.Surface("rust", "Cacamba", new Color(0.9f, 0.7f, 0.1f));
+            var skipBatch = new MeshBatch();
+            int skips = 0;
+
+            for (int tries = 0; tries < 300 && skips < 9; tries++)
+            {
+                Block block = Blocks[random.Next(Blocks.Count)];
+                int e = random.Next(block.Poly.Count);
+
+                if (block.EdgeClass[e] < RoadClass.Residential)
                 {
                     continue;
                 }
 
-                parked.Add(position);
-                CityPieces.Car(parent, model, position, yaw + ((float)random.NextDouble() - 0.5f) * 4f, true, paint);
+                Vector2 a = block.Poly[e];
+                Vector2 b = block.Poly[(e + 1) % block.Poly.Count];
+                float length = Vector2.Distance(a, b);
+
+                if (length < 18f)
+                {
+                    continue;
+                }
+
+                Vector2 dir = (b - a) / length;
+                Vector2 front = Geo.Right(dir);
+                Vector2 center2 = a + dir * (length * (0.25f + 0.5f * (float)random.NextDouble())) - front * 1.5f;
+                Vector3 position = Geo.V3(center2, CurbHeight);
+
+                if (NearAny(position, avoid, 14f) || NearAny(position, placed, 8f) || _raster.Occ[_raster.At(center2)] != 0 || _raster.DistAt(center2) < 1.1f)
+                {
+                    continue;
+                }
+
+                skipBatch.Box(skip, position + Geo.V3(dir * -2.1f + front * 0.9f), Geo.V3(front), 4.2f, 1.1f, 1.8f);
+                var go = new GameObject("Cacamba");
+                go.transform.SetParent(dumpsters, false);
+                go.transform.SetPositionAndRotation(position + Vector3.up * 0.55f, Quaternion.LookRotation(Geo.V3(front), Vector3.up));
+                go.AddComponent<BoxCollider>().size = new Vector3(4.2f, 1.1f, 1.8f);
+                placed.Add(position);
+                skips++;
+            }
+
+            skipBatch.Build(dumpsters, "CacambasVisual");
+
+            BuildBumps(random);
+            BuildParkedCars(cars, random, avoid, placed);
+            BuildWires(random);
+            BuildLimits(map, parent);
+            Debug.Log($"[CityBuilder] Postes: {Poles.Count}; carros estacionados: {cars.childCount}; pontos de ônibus: {bus.childCount}.");
+        }
+
+        // ---------- Fios ----------
+
+        private static void BuildWires(System.Random random)
+        {
+            var groups = new Dictionary<int, List<PoleInfo>>();
+
+            foreach (PoleInfo pole in Poles)
+            {
+                if (!groups.TryGetValue(pole.Key, out List<PoleInfo> list))
+                {
+                    list = new List<PoleInfo>();
+                    groups[pole.Key] = list;
+                }
+
+                list.Add(pole);
+            }
+
+            foreach (List<PoleInfo> list in groups.Values)
+            {
+                list.Sort((x, y) => x.Axis.CompareTo(y.Axis));
+
+                for (int k = 0; k + 1 < list.Count; k++)
+                {
+                    if (Vector3.Distance(list[k].Pos, list[k + 1].Pos) < 75f)
+                    {
+                        SpanWires(list[k], list[k + 1], random);
+                    }
+                }
+            }
+
+            // Travessias: de um lado da rua ao outro, onde há postes quase de frente um para o outro.
+            var used = new HashSet<PoleInfo>();
+
+            foreach (PoleInfo a in Poles)
+            {
+                if (used.Contains(a))
+                {
+                    continue;
+                }
+
+                foreach (PoleInfo c in Poles)
+                {
+                    float distance = Vector3.Distance(a.Pos, c.Pos);
+
+                    if (c.Key == a.Key || used.Contains(c) || distance < 6f || distance > 26f || Vector3.Dot(a.Facing, c.Facing) > -0.8f)
+                    {
+                        continue;
+                    }
+
+                    // Os dois postes estão um de frente para o outro: o vetor entre eles é quase paralelo ao Facing.
+                    Vector3 between = (c.Pos - a.Pos).normalized;
+
+                    if (Mathf.Abs(Vector3.Dot(between, a.Facing)) < 0.9f)
+                    {
+                        continue;
+                    }
+
+                    for (int k = 0; k < 2; k++)
+                    {
+                        float y = 8.5f - 0.6f * k;
+                        Wires(a.Batch, a.Pos + Vector3.up * y, c.Pos + Vector3.up * y, 0.02f * distance, 5, 0.035f, Vector3.zero);
+                    }
+
+                    used.Add(a);
+                    used.Add(c);
+
+                    break;
+                }
             }
         }
 
-        /// <summary>Oito carros do kit dando voltas em quarteirões (sentido horário), a 7 a 9 m/s, cinemáticos.</summary>
-        private static void BuildTraffic(Transform parent, Transform player)
+        // ---------- Pontos de ônibus e árvores ----------
+
+        private static void BuildBusStops(OsmMap map, Transform colliders, List<Vector3> avoid, List<Vector3> placed)
         {
-            var blocks = new[]
+            var stops = new List<Vector2>();
+            var nodes = new List<OsmNode>();
+
+            foreach (OsmNode node in map.Nodes)
             {
-                new Vector2Int(3, 3), new Vector2Int(4, 3), new Vector2Int(3, 4), new Vector2Int(4, 4),
-                new Vector2Int(3, 5), new Vector2Int(4, 5), new Vector2Int(2, 4), new Vector2Int(5, 4),
-            };
-            string[] models = { "taxi", "sedan", "van", "suv", "hatchback-sports", "delivery", "sedan", "truck" };
-            float[] speeds = { 8f, 7f, 9f, 8f, 7.5f, 8.5f, 7f, 9f };
-            float[] starts = { 0.1f, 0.6f, 0.35f, 0.85f, 0.2f, 0.7f, 0.5f, 0.05f };
-            int[] paints = { 0, 1, 2, 3, 4, 5, 0, 1 };
+                if (node.Tag("highway") == "bus_stop" && map.InsideBox(node.Pos))
+                {
+                    nodes.Add(node);
+                }
+            }
 
-            for (int k = 0; k < blocks.Length; k++)
+            // Primeiro os das avenidas (primária e terciária), depois os das ruas menores.
+            for (int pass = 0; pass < 2; pass++)
             {
-                int i = blocks[k].x;
-                int j = blocks[k].y;
-                float west = LaneOffset(i == AvenueIndex);
-                float east = LaneOffset(i + 1 == AvenueIndex);
-                var corners = new[]
+                foreach (OsmNode node in nodes)
                 {
-                    new Vector3(_cx[i] + west, 0.02f, _cz[j] + 2f),
-                    new Vector3(_cx[i] + west, 0.02f, _cz[j + 1] - 2f),
-                    new Vector3(_cx[i + 1] - east, 0.02f, _cz[j + 1] - 2f),
-                    new Vector3(_cx[i + 1] - east, 0.02f, _cz[j] + 2f),
-                };
+                    Block bestBlock = null;
+                    int bestEdge = -1;
+                    float best = 30f;
 
-                // Posição inicial: fração do perímetro.
-                float perimeter = 0f;
+                    foreach (Block block in Blocks)
+                    {
+                        for (int e = 0; e < block.Poly.Count; e++)
+                        {
+                            if (block.EdgeClass[e] < RoadClass.Residential)
+                            {
+                                continue;
+                            }
 
-                for (int c = 0; c < 4; c++)
+                            float d = Geo.DistanceToSegment(node.Pos, block.Poly[e], block.Poly[(e + 1) % block.Poly.Count], out _, out _);
+
+                            if (d < best)
+                            {
+                                best = d;
+                                bestBlock = block;
+                                bestEdge = e;
+                            }
+                        }
+                    }
+
+                    if (bestBlock == null || (pass == 0) != (bestBlock.EdgeClass[bestEdge] >= RoadClass.Tertiary))
+                    {
+                        continue;
+                    }
+
+                    Vector2 a = bestBlock.Poly[bestEdge];
+                    Vector2 b = bestBlock.Poly[(bestEdge + 1) % bestBlock.Poly.Count];
+                    Vector2 dir = (b - a).normalized;
+                    Vector2 front = Geo.Right(dir);
+                    Geo.DistanceToSegment(node.Pos, a, b, out Vector2 onEdge, out float t);
+                    float length = Vector2.Distance(a, b);
+                    Vector2 p2 = a + dir * Mathf.Clamp(t * length, 3f, length - 3f) - front * 1.2f;
+                    Vector3 p = Geo.V3(p2, CurbHeight);
+
+                    if (stops.Exists(s => Vector2.Distance(s, p2) < 25f) || NearAny(p, avoid, 9f) || NearAny(p, placed, 6f) || _raster.Occ[_raster.At(p2)] != 0 || _raster.DistAt(p2) < 0.8f || stops.Count >= 26)
+                    {
+                        continue;
+                    }
+
+                    BusStop(colliders, BuildBatch(p), p, Geo.V3(front), stops.Count % 7);
+                    stops.Add(p2);
+                    placed.Add(p);
+                }
+            }
+        }
+
+        private static void BuildTrees(OsmMap map, Transform posts, List<Vector3> avoid, List<Vector3> placed)
+        {
+            // Árvores do OSM (natural=tree).
+            int seed = 4000;
+
+            foreach (OsmNode node in map.Nodes)
+            {
+                if (node.Tag("natural") != "tree" || !map.InsideBox(node.Pos))
                 {
-                    perimeter += Vector3.Distance(corners[c], corners[(c + 1) % 4]);
+                    continue;
                 }
 
-                float distance = starts[k] * perimeter;
+                var p = Geo.V3(node.Pos, CurbHeight);
+
+                if (_raster.BlockAt(node.Pos) == 0 || _raster.Occ[_raster.At(node.Pos)] != 0 || _raster.DistAt(node.Pos) < 0.7f || NearAny(p, placed, 3f))
+                {
+                    continue;
+                }
+
+                Tree(BuildBatch(p), p, 7f + (seed % 3), seed++, true);
+                SolidCapsule(posts, "TroncoOSM", p, 0.25f, 3f);
+                placed.Add(p);
+            }
+
+            // Parques e cemitério: árvores espalhadas.
+            var r = new System.Random(88);
+            int count = 0;
+
+            for (float x = -map.HalfX; x < map.HalfX && count < 450; x += 8f)
+            {
+                for (float z = -map.HalfZ; z < map.HalfZ && count < 450; z += 8f)
+                {
+                    var p2 = new Vector2(x + (float)r.NextDouble() * 6f, z + (float)r.NextDouble() * 6f);
+                    byte zone = _raster.ZoneAt(p2);
+
+                    if ((zone != ZonePark && zone != ZoneCemetery) || _raster.DistAt(p2) < 2f || _raster.Occ[_raster.At(p2)] != 0)
+                    {
+                        continue;
+                    }
+
+                    var p = Geo.V3(p2, CurbHeight);
+
+                    if (NearAny(p, avoid, 8f) || NearAny(p, placed, 6f))
+                    {
+                        continue;
+                    }
+
+                    Tree(BuildBatch(p), p, 6.5f + 2.5f * (float)r.NextDouble(), seed++, true, Vector2.Distance(p2, LargoCenter) > LiteRadius);
+                    SolidCapsule(posts, "TroncoParque", p, 0.22f, 3f);
+                    placed.Add(p);
+                    count++;
+                }
+            }
+        }
+
+        // ---------- Lombadas e carros estacionados ----------
+
+        /// <summary>Lombadas amarelas e pretas em alguns trechos de rua residencial (só visuais: a moto não é afetada).</summary>
+        private static void BuildBumps(System.Random random)
+        {
+            Material asphalt = CityStyle.Asphalt();
+            Material yellow = CityStyle.PaintYellow();
+            Material black = CityStyle.PaintBlack();
+            int made = 0;
+            BumpPositions.Clear();
+
+            for (int tries = 0; tries < 400 && made < 10; tries++)
+            {
+                GraphEdge edge = GraphEdges[random.Next(GraphEdges.Count)];
+                Road r = edge.Road;
+
+                if (r.Kind != RoadKind.Residential)
+                {
+                    continue;
+                }
+
+                Vector2 a = r.Pts[edge.Segment];
+                Vector2 b = r.Pts[edge.Segment + 1];
+                float length = Vector2.Distance(a, b);
+
+                if (length < 40f)
+                {
+                    continue;
+                }
+
+                Vector2 dir = (b - a) / length;
+                Vector2 center = a + dir * (length * 0.5f);
+
+                if (NearJunction(center, 8f) || NearAny(Geo.V3(center), BumpPositions, 60f))
+                {
+                    continue;
+                }
+
+                float width = r.ExtL[edge.Segment] + r.ExtR[edge.Segment];
+                Vector3 tangent = Geo.V3(dir);
+                Vector3 across = Vector3.Cross(tangent, Vector3.up);
+                Vector3 origin = Geo.V3(center) + tangent * 0.7f - across * (width * 0.5f);
+                MeshBatch batch = GroundBatch(Geo.V3(center));
+                batch.Box(asphalt, origin, tangent, width, 0.06f, 1.4f);
+                int stripes = Mathf.RoundToInt(width / 0.5f);
+
+                for (int k = 0; k < stripes; k++)
+                {
+                    batch.Rect(k % 2 == 0 ? yellow : black, origin + across * (k * 0.5f) + Vector3.up * 0.062f, across, -tangent, 0.5f, 1.4f);
+                }
+
+                BumpPositions.Add(Geo.V3(center));
+                made++;
+            }
+        }
+
+        private static float RoadWidthFrom(Vector2 boundaryPoint, Vector2 outward)
+        {
+            for (float d = 0.5f; d < 14f; d += 0.5f)
+            {
+                if (_raster.BlockAt(boundaryPoint + outward * d) != 0)
+                {
+                    return d;
+                }
+            }
+
+            return 14f;
+        }
+
+        /// <summary>Carros estacionados rente à guia das ruas residenciais, no sentido do tráfego (mão direita).</summary>
+        private static void BuildParkedCars(Transform parent, System.Random random, List<Vector3> avoid, List<Vector3> placed)
+        {
+            var parked = new List<Vector3>();
+            List<Vector3> trafficPath = LoopPath();
+
+            ForEachEdge((block, e, a, dir, front, length, cls) =>
+            {
+                if (cls < RoadClass.Residential || cls > RoadClass.Tertiary || length < 16f || parked.Count >= 70)
+                {
+                    return;
+                }
+
+                int count = random.Next(0, 3) * Mathf.Max(1, Mathf.RoundToInt(length / 50f));
+
+                for (int n = 0; n < count; n++)
+                {
+                    float t = 5f + (length - 10f) * (float)random.NextDouble();
+                    Vector2 boundary = a + dir * t;
+                    Vector2 p2 = boundary + front * 1.55f;
+                    Vector3 position = Geo.V3(p2, 0.02f);
+
+                    if (NearJunction(p2, 6f) || RoadWidthFrom(boundary, front) < 6.8f || NearAny(position, trafficPath, 5.5f) || NearAny(position, avoid, 16f) || NearAny(position, parked, 8f) || NearAny(position, placed, 4f))
+                    {
+                        continue;
+                    }
+
+                    string model = ParkedCarModels[random.Next(ParkedCarModels.Length)];
+                    int paint = random.Next(CarPaint.Colors.Length);
+                    float yaw = Mathf.Atan2(dir.x, dir.y) * Mathf.Rad2Deg + ((float)random.NextDouble() - 0.5f) * 4f;
+                    parked.Add(position);
+                    CityPieces.Car(parent, model, position, yaw, true, paint);
+                }
+            });
+        }
+
+        // ---------- Limite do mapa ----------
+
+        /// <summary>Meia-largura da área jogável: as paredes invisíveis ficam um pouco para dentro da caixa do OSM.</summary>
+        public const float PlayableHalf = 475f;
+
+        /// <summary>Paredes invisíveis na borda jogável e uma barreira de obra em cada rua que cruza a borda (a cidade continua além dela).</summary>
+        private static void BuildLimits(OsmMap map, Transform parent)
+        {
+            Transform limits = Group(parent, "Limites");
+            const float height = 6f;
+            float p = PlayableHalf;
+            Wall(limits, "LimiteNorte", new Vector3(0f, height * 0.5f, p + 1f), new Vector3(2f * p + 8f, height, 2f));
+            Wall(limits, "LimiteSul", new Vector3(0f, height * 0.5f, -p - 1f), new Vector3(2f * p + 8f, height, 2f));
+            Wall(limits, "LimiteLeste", new Vector3(p + 1f, height * 0.5f, 0f), new Vector3(2f, height, 2f * p + 8f));
+            Wall(limits, "LimiteOeste", new Vector3(-p - 1f, height * 0.5f, 0f), new Vector3(2f, height, 2f * p + 8f));
+
+            var placed = new List<Vector2>();
+            Material red = CityStyle.Awning(0);
+            Material white = CityStyle.PaintWhite();
+
+            foreach (Road r in Roads)
+            {
+                if (r.Kind == RoadKind.Pedestrian)
+                {
+                    continue;
+                }
+
+                for (int k = 0; k + 1 < r.Pts.Count; k++)
+                {
+                    Vector2 a = r.Pts[k];
+                    Vector2 b = r.Pts[k + 1];
+
+                    for (int axis = 0; axis < 2; axis++)
+                    {
+                        foreach (float side in new[] { -1f, 1f })
+                        {
+                            float limit = side * p;
+                            float va = axis == 0 ? a.x : a.y;
+                            float vb = axis == 0 ? b.x : b.y;
+
+                            if ((va - limit) * (vb - limit) >= 0f || Mathf.Abs(va - vb) < 0.01f)
+                            {
+                                continue;
+                            }
+
+                            Vector2 at = Vector2.Lerp(a, b, (limit - va) / (vb - va));
+
+                            if (placed.Exists(q => Vector2.Distance(q, at) < 12f))
+                            {
+                                continue;
+                            }
+
+                            placed.Add(at);
+                            Vector2 inward = axis == 0 ? new Vector2(-side, 0f) : new Vector2(0f, -side);
+
+                            if (r.Class >= RoadClass.Tertiary && BorderViews.Count == 0)
+                            {
+                                BorderViews.Add(View("borda", at + inward * 17f, -inward));
+                            }
+
+                            Barrier(limits, at + inward * 1.2f, inward, Mathf.Max(r.ExtL[k], r.ExtR[k]), red, white);
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>Barreira de obra de lado a lado da rua: tábuas listradas, cones e uma placa "OBRA". inward aponta para dentro do mapa.</summary>
+        private static void Barrier(Transform parent, Vector2 center, Vector2 inward, float halfWidth, Material red, Material white)
+        {
+            Vector3 inward3 = Geo.V3(inward);
+            Vector3 sideways = Vector3.Cross(inward3, Vector3.up);
+            var frame = new Frame(Geo.V3(center) - sideways * halfWidth, inward3);
+            MeshBatch b = BuildBatch(Geo.V3(center));
+            float total = halfWidth * 2f;
+            int boards = Mathf.CeilToInt(total / 1.2f);
+            float step = total / boards;
+
+            for (int i = 0; i < boards; i++)
+            {
+                for (int s = 0; s < 4; s++)
+                {
+                    float x0 = i * step + s * step / 4f;
+                    b.Box(s % 2 == 0 ? red : white, frame.Pt(x0, 0.75f, 0f), frame.F, step / 4f, 0.32f, 0.1f);
+                }
+
+                b.Box(CityStyle.IronBlack(), frame.Pt(i * step + 0.1f, 0f, 0f), frame.F, 0.08f, 0.9f, 0.08f);
+                b.Box(CityStyle.IronBlack(), frame.Pt(i * step + step - 0.18f, 0f, 0f), frame.F, 0.08f, 0.9f, 0.08f);
+            }
+
+            b.Box(CityStyle.Board(3), frame.Pt(total * 0.5f - 0.7f, 1.2f, 0.02f), frame.F, 1.4f, 0.7f, 0.05f);
+            var context = new BuildingContext { B = b, Rnd = new System.Random(1), Signs = _signsRoot };
+            CityBuildings.Sign(context, frame, total * 0.5f, 1.55f, 1.3f, 0.6f, "OBRA", CityStyle.BoardText(3), -0.08f);
+
+            for (int c = 0; c < 4; c++)
+            {
+                Vector3 p = frame.Pt(total * (c + 0.5f) / 4f, 0f, -1.2f);
+                CityPieces.Model(parent, Kit.CityKitRoads, "construction-cone", p + Vector3.up * 0.02f, 0f, 9f).name = "Cone";
+            }
+        }
+
+        // ---------- Trânsito ----------
+
+        private const int TrafficCars = 8;
+        private static List<List<int>> _trafficLoops;
+        private static Vector3 _avenueAnchor;
+        private static bool _avenueAnchorSet;
+
+        /// <summary>Pontos de vista na borda do mapa (barreiras de obra), usados pelas capturas.</summary>
+        private static readonly List<ViewPoint> BorderViews = new List<ViewPoint>();
+
+        /// <summary>Posições (plano) de árvores, postes e da fonte do largo: o ponto de vista do largo evita ficar atrás deles.</summary>
+        private static readonly List<Vector2> LargoSolids = new List<Vector2>();
+
+        /// <summary>Trechos de rua (rua, índice do trecho) percorridos pelos circuitos do trânsito.</summary>
+        private static readonly HashSet<(Road road, int segment)> LoopSegments = new HashSet<(Road road, int segment)>();
+
+        /// <summary>
+        /// Oito carros do kit dando voltas em circuitos fechados reais de ruas (sentido do trânsito, pista da direita), a 7 a 9 m/s,
+        /// cinemáticos. Os circuitos não se cruzam (nós disjuntos) e há ao menos dois carros por circuito, afastados.
+        /// </summary>
+        private static void BuildTraffic(Transform parent, Transform player)
+        {
+            List<List<int>> loops = _trafficLoops;
+            string[] models = { "taxi", "sedan", "van", "suv", "hatchback-sports", "delivery", "sedan", "truck" };
+            float[] speeds = { 8f, 7f, 9f, 8f, 7.5f, 8.5f, 7f, 9f };
+            int[] paints = { 0, 1, 2, 3, 4, 5, 0, 1 };
+            var cars = new List<(List<int> loop, float fraction)>();
+
+            for (int k = 0; k < TrafficCars; k++)
+            {
+                List<int> loop = loops[k % loops.Count];
+                int round = k / loops.Count;
+                int onLoop = Mathf.CeilToInt((TrafficCars - (k % loops.Count)) / (float)loops.Count);
+                cars.Add((loop, (round + (k % loops.Count) * 0.13f) / Mathf.Max(2, onLoop)));
+            }
+
+            bool anchored = false;
+
+            for (int k = 0; k < TrafficCars; k++)
+            {
+                Vector3[] corners = LoopWaypoints(cars[k].loop);
+                float perimeter = 0f;
+
+                for (int c = 0; c < corners.Length; c++)
+                {
+                    perimeter += Vector3.Distance(corners[c], corners[(c + 1) % corners.Length]);
+                }
+
+                float distance = Mathf.Repeat(cars[k].fraction, 1f) * perimeter;
+
+                // Um carro nasce logo à frente do ponto de vista da avenida (as capturas pegam o trânsito do corredor de ônibus).
+                if (_avenueAnchorSet && !anchored && AlongLoop(corners, _avenueAnchor, out float along, out float gap) && gap < 8f)
+                {
+                    distance = along;
+                    anchored = true;
+                }
+
                 int segment = 0;
 
-                while (distance > Vector3.Distance(corners[segment], corners[(segment + 1) % 4]))
+                while (distance > Vector3.Distance(corners[segment], corners[(segment + 1) % corners.Length]))
                 {
-                    distance -= Vector3.Distance(corners[segment], corners[(segment + 1) % 4]);
+                    distance -= Vector3.Distance(corners[segment], corners[(segment + 1) % corners.Length]);
                     segment++;
                 }
 
                 Vector3 a = corners[segment];
-                Vector3 b = corners[(segment + 1) % 4];
+                Vector3 b = corners[(segment + 1) % corners.Length];
                 Vector3 direction = (b - a).normalized;
                 Vector3 start = a + direction * distance;
                 float yaw = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
@@ -612,6 +887,264 @@ namespace Entregador.Editor
                 car.AddComponent<Rigidbody>().isKinematic = true;
                 CityPieces.Car(car.transform, models[k], start, yaw, false, paints[k]).name = "Carro";
                 car.AddComponent<Entregador.Game.TrafficLoop>().Configure(corners, speeds[k], player, segment);
+            }
+        }
+
+        /// <summary>Posição (m, ao longo do circuito) do ponto do circuito mais perto de p, e a distância até ele.</summary>
+        private static bool AlongLoop(Vector3[] corners, Vector3 p, out float along, out float gap)
+        {
+            along = 0f;
+            gap = float.MaxValue;
+            float travelled = 0f;
+
+            for (int i = 0; i < corners.Length; i++)
+            {
+                Vector3 a = corners[i];
+                Vector3 b = corners[(i + 1) % corners.Length];
+                float d = Geo.DistanceToSegment(Geo.V2(p), Geo.V2(a), Geo.V2(b), out _, out float t);
+
+                if (d < gap)
+                {
+                    gap = d;
+                    along = travelled + t * Vector3.Distance(a, b);
+                }
+
+                travelled += Vector3.Distance(a, b);
+            }
+
+            return gap < float.MaxValue;
+        }
+
+        /// <summary>Todos os pontos dos circuitos do trânsito, de 5 em 5 m (os carros estacionados ficam longe deles).</summary>
+        private static List<Vector3> LoopPath()
+        {
+            var path = new List<Vector3>();
+
+            foreach (List<int> loop in _trafficLoops)
+            {
+                Vector3[] points = LoopWaypoints(loop);
+
+                for (int i = 0; i < points.Length; i++)
+                {
+                    Vector3 a = points[i];
+                    Vector3 b = points[(i + 1) % points.Length];
+                    int steps = Mathf.Max(1, Mathf.CeilToInt(Vector3.Distance(a, b) / 5f));
+
+                    for (int s = 0; s < steps; s++)
+                    {
+                        path.Add(Vector3.Lerp(a, b, s / (float)steps));
+                    }
+                }
+            }
+
+            return path;
+        }
+
+        /// <summary>Pontos do circuito: nós do grafo, deslocados para a pista da direita onde a rua tem mão dupla.</summary>
+        private static Vector3[] LoopWaypoints(List<int> loop)
+        {
+            var points = new List<Vector3>();
+            int n = loop.Count;
+
+            for (int i = 0; i < n; i++)
+            {
+                Vector2 prev = Geo.V2(_graph.NodePosition(loop[(i + n - 1) % n]));
+                Vector2 cur = Geo.V2(_graph.NodePosition(loop[i]));
+                Vector2 next = Geo.V2(_graph.NodePosition(loop[(i + 1) % n]));
+                Vector2 d = ((cur - prev).normalized + (next - cur).normalized).normalized;
+
+                if (d.sqrMagnitude < 0.01f)
+                {
+                    d = (next - cur).normalized;
+                }
+
+                bool twoWay = !ArcOneway(loop[(i + n - 1) % n], loop[i]) || !ArcOneway(loop[i], loop[(i + 1) % n]);
+                Vector2 p = cur + Geo.Right(d) * (twoWay ? 1.9f : 0f);
+
+                if (points.Count == 0 || Vector2.Distance(Geo.V2(points[points.Count - 1]), p) > 4f)
+                {
+                    points.Add(Geo.V3(p, 0.02f));
+                }
+            }
+
+            return points.ToArray();
+        }
+
+        private static bool ArcOneway(int from, int to)
+        {
+            foreach (GraphEdge e in GraphEdges)
+            {
+                if ((e.From == from && e.To == to) || (e.From == to && e.To == from))
+                {
+                    return e.Road.Oneway;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>Procura circuitos fechados de 450 a 1.400 m nas ruas principais (depois nas demais), com nós que não se repetem entre circuitos.</summary>
+        private static List<List<int>> FindTrafficLoops()
+        {
+            var result = new List<List<int>>();
+            var usedNodes = new HashSet<int>();
+
+            for (int pass = 0; pass < 2 && result.Count < 4; pass++)
+            {
+                RoadKind minimum = pass == 0 ? RoadKind.Tertiary : RoadKind.Service;
+                var adjacency = new Dictionary<int, List<(int to, float length)>>();
+
+                foreach (GraphEdge e in GraphEdges)
+                {
+                    if (e.Road.Kind < minimum || e.Road.Kind == RoadKind.Busway)
+                    {
+                        continue;
+                    }
+
+                    float length = Vector3.Distance(_graph.NodePosition(e.From), _graph.NodePosition(e.To));
+                    AddArc(adjacency, e.From, e.To, length);
+
+                    if (!e.Road.Oneway)
+                    {
+                        AddArc(adjacency, e.To, e.From, length);
+                    }
+                }
+
+                var candidates = new List<(List<int> nodes, float length)>();
+
+                foreach (int start in new List<int>(adjacency.Keys))
+                {
+                    var path = new List<int> { start };
+                    var onPath = new HashSet<int> { start };
+                    int budget = 12000;
+                    int before = candidates.Count;
+                    Search(adjacency, start, start, 0f, path, onPath, candidates, ref budget, before + 2);
+                }
+
+                // Os que passam pelo corredor de ônibus primeiro (a avenida precisa de trânsito), depois os mais longos; sem nós em comum.
+                var score = new Dictionary<List<int>, float>();
+
+                foreach ((List<int> nodes, float length) in candidates)
+                {
+                    float bonus = 0f;
+
+                    foreach (GraphEdge e in GraphEdges)
+                    {
+                        if (e.Road.BusLeft + e.Road.BusRight > 0.5f && nodes.Contains(e.From) && nodes.Contains(e.To))
+                        {
+                            bonus = 600f;
+
+                            break;
+                        }
+                    }
+
+                    score[nodes] = length + bonus;
+                }
+
+                candidates.Sort((x, y) => score[y.nodes].CompareTo(score[x.nodes]));
+
+                foreach ((List<int> nodes, float length) in candidates)
+                {
+                    if (result.Count >= 4)
+                    {
+                        break;
+                    }
+
+                    bool shared = false;
+
+                    foreach (int node in nodes)
+                    {
+                        shared |= usedNodes.Contains(node);
+                    }
+
+                    if (shared)
+                    {
+                        continue;
+                    }
+
+                    result.Add(nodes);
+                    usedNodes.UnionWith(nodes);
+                }
+            }
+
+            if (result.Count == 0)
+            {
+                throw new System.InvalidOperationException("Nenhum circuito fechado de ruas para o trânsito.");
+            }
+
+            foreach (List<int> loop in result)
+            {
+                for (int i = 0; i < loop.Count; i++)
+                {
+                    int a = loop[i];
+                    int b = loop[(i + 1) % loop.Count];
+
+                    foreach (GraphEdge e in GraphEdges)
+                    {
+                        if ((e.From == a && e.To == b) || (e.From == b && e.To == a))
+                        {
+                            LoopSegments.Add((e.Road, e.Segment));
+
+                            break;
+                        }
+                    }
+                }
+
+                var names = new List<string>();
+
+                foreach (GraphEdge e in GraphEdges)
+                {
+                    if (loop.Contains(e.From) && loop.Contains(e.To) && !string.IsNullOrEmpty(e.Road.Name) && !names.Contains(e.Road.Name))
+                    {
+                        names.Add(e.Road.Name);
+                    }
+                }
+
+                Debug.Log($"[CityBuilder] Circuito de trânsito com {loop.Count} nós: {string.Join(", ", names)}.");
+            }
+
+            return result;
+        }
+
+        private static void AddArc(Dictionary<int, List<(int to, float length)>> adjacency, int from, int to, float length)
+        {
+            if (!adjacency.TryGetValue(from, out List<(int to, float length)> list))
+            {
+                list = new List<(int to, float length)>();
+                adjacency[from] = list;
+            }
+
+            list.Add((to, length));
+        }
+
+        private static void Search(Dictionary<int, List<(int to, float length)>> adjacency, int start, int node, float length, List<int> path, HashSet<int> onPath, List<(List<int> nodes, float length)> found, ref int budget, int foundLimit)
+        {
+            if (budget-- <= 0 || found.Count >= foundLimit || !adjacency.TryGetValue(node, out List<(int to, float length)> arcs))
+            {
+                return;
+            }
+
+            foreach ((int to, float arc) in arcs)
+            {
+                float total = length + arc;
+
+                if (to == start && path.Count >= 4 && total >= 450f)
+                {
+                    found.Add((new List<int>(path), total));
+
+                    continue;
+                }
+
+                if (onPath.Contains(to) || total > 1400f)
+                {
+                    continue;
+                }
+
+                path.Add(to);
+                onPath.Add(to);
+                Search(adjacency, start, to, total, path, onPath, found, ref budget, foundLimit);
+                path.RemoveAt(path.Count - 1);
+                onPath.Remove(to);
             }
         }
     }

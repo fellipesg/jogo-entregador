@@ -171,6 +171,39 @@ namespace Entregador.Editor
             TriangleCount += 1;
         }
 
+        /// <summary>Triângulo horizontal virado para cima. a, b, c em ordem anti-horária vista de cima (x leste, z norte). UV = xz do mundo.</summary>
+        public void FlatTri(Material material, Vector3 a, Vector3 b, Vector3 c)
+        {
+            Part p = For(material);
+            int start = p.Vertices.Count;
+
+            foreach (Vector3 v in new[] { a, c, b })
+            {
+                p.Vertices.Add(v);
+                p.Normals.Add(Vector3.up);
+                p.Uvs.Add(new Vector2(v.x, v.z));
+            }
+
+            p.Triangles.AddRange(new[] { start, start + 1, start + 2 });
+            TriangleCount += 1;
+        }
+
+        /// <summary>Quadrilátero horizontal virado para cima (a, b, c, d anti-horários vistos de cima). UV = xz do mundo.</summary>
+        public void FlatQuad(Material material, Vector3 a, Vector3 b, Vector3 c, Vector3 d)
+        {
+            FlatTri(material, a, b, c);
+            FlatTri(material, a, c, d);
+        }
+
+        /// <summary>Polígono horizontal triangulado (índices anti-horários de Geo.Triangulate) na altura y, virado para cima.</summary>
+        public void Polygon(Material material, IList<Vector2> polygon, IList<int> triangles, float y)
+        {
+            for (int i = 0; i + 2 < triangles.Count; i += 3)
+            {
+                FlatTri(material, Geo.V3(polygon[triangles[i]], y), Geo.V3(polygon[triangles[i + 1]], y), Geo.V3(polygon[triangles[i + 2]], y));
+            }
+        }
+
         /// <summary>Disco (polígono regular) num plano: right e up unitários; normal = Cross(up, right).</summary>
         public void Disc(Material material, Vector3 center, Vector3 right, Vector3 up, float radius, int sides)
         {
@@ -413,7 +446,7 @@ namespace Entregador.Editor
             go.transform.SetParent(parent, false);
             var filter = go.AddComponent<MeshFilter>();
             filter.sharedMesh = mesh;
-            MeshStore.Add(mesh, filter);
+            MeshStore.Add(mesh, m => filter.sharedMesh = m);
             var renderer = go.AddComponent<MeshRenderer>();
             renderer.sharedMaterials = _order.ToArray();
             renderer.shadowCastingMode = castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
@@ -423,36 +456,52 @@ namespace Entregador.Editor
     }
 
     /// <summary>
-    /// Guarda as malhas geradas num único asset binário (Assets/_Jogo/Scenes/SantoAmaro_MalhasNN.asset), para a cena
-    /// ficar pequena (o projeto serializa assets em texto, e malhas em texto são enormes). É recriado a cada geração.
+    /// Guarda as malhas geradas em assets binários (Assets/_Jogo/Scenes/SantoAmaro_MalhasNN.asset), para a cena ficar pequena (o
+    /// projeto serializa assets em texto, e malhas em texto são enormes). Cada arquivo fica abaixo de ~90 MB (orçamento estimado de 24 MB; limite de tamanho do git).
+    /// É recriado a cada geração.
     /// </summary>
     public static class MeshStore
     {
         public const string Path = "Assets/_Jogo/Scenes/SantoAmaro_Malhas00.asset";
 
+        /// <summary>Tamanho estimado máximo (bytes) de cada arquivo de malhas.</summary>
+        private const long FileBudget = 24L * 1024 * 1024;
+
         private static readonly List<Mesh> Meshes = new List<Mesh>();
-        private static readonly List<MeshFilter> Filters = new List<MeshFilter>();
+        private static readonly List<System.Action<Mesh>> Assigners = new List<System.Action<Mesh>>();
         private static int _counter;
 
         public static void Begin()
         {
             Meshes.Clear();
-            Filters.Clear();
+            Assigners.Clear();
             _counter = 0;
         }
 
         public static string UniqueName(string name) => $"{name}_{_counter++}";
 
-        public static void Add(Mesh mesh, MeshFilter filter)
+        /// <summary>Registra uma malha e o que a recebe (MeshFilter ou MeshCollider) depois de gravada em arquivo.</summary>
+        public static void Add(Mesh mesh, System.Action<Mesh> assign)
         {
             Meshes.Add(mesh);
-            Filters.Add(filter);
+            Assigners.Add(assign);
         }
 
-        /// <summary>Grava as malhas em binário, em arquivos de ~25 malhas (limite de tamanho do git) e aponta os MeshFilter da cena para elas.</summary>
+        private static long EstimateBytes(Mesh mesh)
+        {
+            long indices = 0;
+
+            for (int i = 0; i < mesh.subMeshCount; i++)
+            {
+                indices += mesh.GetIndexCount(i);
+            }
+
+            return mesh.vertexCount * 48L + indices * (mesh.indexFormat == IndexFormat.UInt32 ? 4L : 2L);
+        }
+
+        /// <summary>Grava as malhas em binário, em arquivos de até ~24 MB estimados, e aponta os MeshFilter/MeshCollider da cena para elas.</summary>
         public static void Save()
         {
-            const int perFile = 25;
             string folder = System.IO.Path.GetDirectoryName(Path).Replace('\\', '/');
 
             foreach (string old in System.IO.Directory.GetFiles(folder, "SantoAmaro_Malhas*.asset"))
@@ -468,9 +517,20 @@ namespace Entregador.Editor
                 names.Add(mesh.name);
             }
 
-            for (int start = 0, file = 0; start < Meshes.Count; start += perFile, file++)
+            int start = 0;
+            int file = 0;
+
+            while (start < Meshes.Count)
             {
-                int count = Mathf.Min(perFile, Meshes.Count - start);
+                int count = 0;
+                long bytes = 0;
+
+                while (start + count < Meshes.Count && (count == 0 || bytes + EstimateBytes(Meshes[start + count]) <= FileBudget))
+                {
+                    bytes += EstimateBytes(Meshes[start + count]);
+                    count++;
+                }
+
                 string path = $"{folder}/SantoAmaro_Malhas{file:00}.asset";
                 UnityEditorInternal.InternalEditorUtility.SaveToSerializedFileAndForget(Meshes.GetRange(start, count).ToArray(), path, false);
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
@@ -482,6 +542,9 @@ namespace Entregador.Editor
                         byName[loaded.name] = loaded;
                     }
                 }
+
+                start += count;
+                file++;
             }
 
             if (byName.Count != names.Count)
@@ -489,13 +552,13 @@ namespace Entregador.Editor
                 throw new System.InvalidOperationException($"Malhas gravadas: {byName.Count} de {names.Count}.");
             }
 
-            for (int i = 0; i < Filters.Count; i++)
+            for (int i = 0; i < Assigners.Count; i++)
             {
-                Filters[i].sharedMesh = byName[names[i]];
+                Assigners[i](byName[names[i]]);
             }
 
             Meshes.Clear();
-            Filters.Clear();
+            Assigners.Clear();
         }
     }
 }

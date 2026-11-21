@@ -116,6 +116,9 @@ namespace Entregador.Editor
 
         public static Material Grass() => PbrMaterials.Surface("grass", null, new Color(1.25f, 1.35f, 0.95f));
 
+        /// <summary>Gramado verde de parques, do cemitério e do terreno em volta da cidade (a textura de grama seca tingida de verde).</summary>
+        public static Material Lawn() => PbrMaterials.Surface("grass", "Gramado", new Color(0.62f, 1.1f, 0.5f));
+
         // Cores lisas.
         public static Material Glass() => PbrMaterials.Flat("Vidro", new Color(0.12f, 0.17f, 0.22f), 0.85f);
 

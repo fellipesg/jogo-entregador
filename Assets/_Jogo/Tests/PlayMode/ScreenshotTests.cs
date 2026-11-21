@@ -48,32 +48,29 @@ namespace Entregador.Game.Tests
             Assert.Fail("Nenhuma semana com o dia 1 seco.");
         }
 
-        /// <summary>Procura, ao longo da rua vertical street, um ponto da pista sem nada sólido por perto (nem na moto nem na câmera).</summary>
-        private Vector3 ClearStreetSpot(int street, float laneOffset)
+        /// <summary>Anda ao longo da rua do ponto de vista até achar um lugar sem nada sólido por perto (nem na moto nem na câmera).</summary>
+        private Vector3 ClearSpot(ViewPoint street)
         {
-            for (int j = 0; j < 9; j++)
+            Vector3 flow = Heading(street.Yaw);
+
+            for (float along = 0f; along <= 60f; along += 4f)
             {
-                for (float t = 0.3f; t <= 0.71f; t += 0.1f)
+                Vector3 p = street.Position + flow * along;
+                bool clear = !Physics.CheckSphere(p + Vector3.up * 1.6f, 1.0f);
+
+                for (float back = 3f; back <= 9f && clear; back += 3f)
                 {
-                    Vector3 p = Vector3.Lerp(Node(street, j), Node(street, j + 1), t) + new Vector3(laneOffset, 0f, 0f);
-                    bool clear = !Physics.CheckSphere(p + Vector3.up * 1.3f, 1.2f);
+                    clear &= !Physics.CheckSphere(p - flow * back + Vector3.up * 1.6f, 1.0f);
+                }
 
-                    for (float back = 3f; back <= 9f && clear; back += 3f)
-                    {
-                        clear &= !Physics.CheckSphere(p + new Vector3(0f, 1.3f, -back), 1.2f);
-                    }
-
-                    if (clear)
-                    {
-                        return p;
-                    }
+                if (clear)
+                {
+                    return p;
                 }
             }
 
-            return Vector3.Lerp(Node(street, 1), Node(street, 2), 0.5f) + new Vector3(laneOffset, 0f, 0f);
+            return street.Position;
         }
-
-        private Vector3 Node(int i, int j) => Flow.Map.Graph.NodePosition(i * 10 + j);
 
         /// <summary>Põe a moto na posição, virada para o primeiro trecho da rota do GPS, com a câmera atrás.</summary>
         private IEnumerator PlaceOnRoute(Vector3 position, float fallbackYaw)
@@ -134,22 +131,73 @@ namespace Entregador.Game.Tests
             yield return null;
             Save(dir, "g_oferta_pedido.png", main);
 
-            // (a) Rua residencial em terceira pessoa, com HUD e a fita do GPS.
             Flow.AcceptOffer();
             yield return null;
-            Vector3 residential = ClearStreetSpot(1, 2f);
-            yield return PlaceOnRoute(residential, 0f);
+
+            // (c) Avenida com corredor de ônibus e trânsito, logo no começo (um carro nasce à frente do ponto de vista): atrás do carro mais perto da avenida.
+            ViewPoint avenue = View("avenida");
+            TrafficLoop lead = null;
+            float nearest = float.MaxValue;
+
+            for (int attempt = 0; attempt < 30 && lead == null; attempt++)
+            {
+                yield return new WaitForSeconds(0.5f);
+
+                foreach (TrafficLoop car in Object.FindObjectsByType<TrafficLoop>(FindObjectsSortMode.None))
+                {
+                    float d = Vector3.Distance(car.transform.position, avenue.Position);
+
+                    if (d < nearest && car.DistanceToNextWaypoint > 15f)
+                    {
+                        nearest = d;
+                        lead = car;
+                    }
+                }
+            }
+
+            Assert.IsNotNull(lead, "Nenhum carro de trânsito.");
+            Vector3 behind = lead.transform.position - lead.transform.forward * 24f;
+            Flow.Bike.SetLocked(true);
+            Flow.Bike.Teleport(new Vector3(behind.x, 0.1f, behind.z), lead.transform.eulerAngles.y);
+            follow.Snap();
+            yield return new WaitForSeconds(0.3f);
+            Flow.Bike.Teleport(new Vector3(behind.x, 0.1f, behind.z), lead.transform.eulerAngles.y);
+            follow.Snap();
+            yield return null;
+            Save(dir, "c_avenida_transito.png", main);
+            ReportStats(dir, "c_avenida_transito", main);
+
+            // Avenida da pista com a faixa vermelha, vista do ponto de vista fixo (para ver o corredor).
+            Flow.Bike.Teleport(new Vector3(avenue.Position.x, 0.1f, avenue.Position.z), avenue.Yaw);
+            follow.Snap();
+            yield return null;
+            yield return null;
+            Save(dir, "c_avenida_corredor.png", main);
+
+            // (j) Borda do mapa: barreira de obra na rua, com a cidade continuando atrás.
+            ViewPoint border = View("borda");
+            Flow.Bike.Teleport(new Vector3(border.Position.x, 0.1f, border.Position.z), border.Yaw);
+            follow.Snap();
+            yield return null;
+            yield return null;
+            Save(dir, "j_borda_do_mapa.png", main);
+
+            // (a) Rua residencial em terceira pessoa, com HUD (minimapa e atribuição do OSM) e a fita do GPS.
+            ViewPoint residentialView = View("residencial");
+            Vector3 residential = ClearSpot(residentialView);
+            yield return PlaceOnRoute(residential, residentialView.Yaw);
             Debug.Log($"[Captura] residencial em {residential} yaw {Flow.Bike.Yaw}");
             Save(dir, "a_rua_residencial_gps.png", main);
             ReportStats(dir, "a_rua_residencial_gps", main);
 
             // (f) Rua com postes e fios: câmera baixa olhando um pouco para cima, ao longo da rua.
             follow.enabled = false;
-            Vector3 poleStreet = ClearStreetSpot(6, 2f);
-            Flow.Bike.Teleport(new Vector3(poleStreet.x, 0.1f, poleStreet.z), 0f);
+            Vector3 flowDirection = Heading(residentialView.Yaw);
+            Vector3 poleStreet = residential + flowDirection * 24f;
+            Flow.Bike.Teleport(new Vector3(poleStreet.x, 0.1f, poleStreet.z), residentialView.Yaw);
             yield return null;
-            main.transform.position = poleStreet + new Vector3(-1f, 1.9f, -4f);
-            main.transform.rotation = Quaternion.Euler(-9f, 0f, 0f);
+            main.transform.position = poleStreet - flowDirection * 4f + Vector3.up * 1.9f;
+            main.transform.rotation = Quaternion.Euler(-9f, residentialView.Yaw, 0f);
             yield return null;
             Save(dir, "f_postes_e_fios.png", main);
             follow.enabled = true;
@@ -169,52 +217,41 @@ namespace Entregador.Game.Tests
             Save(dir, "d_borracharia.png", main);
             follow.enabled = true;
 
-            // (b) O largo com os restaurantes (visto da moto, dentro da praça, olhando para dois deles).
-            Place[] restaurants = Flow.Map.Restaurants;
-            yield return PlaceFacing(Flow.Map.BikeSpawn, restaurants[0].Position);
-            Save(dir, "b_largo_restaurante_1.png", main);
-            yield return PlaceFacing(Flow.Map.BikeSpawn + new Vector3(-30f, 0f, 20f), restaurants[1].Position);
-            Save(dir, "b_largo_restaurante_2.png", main);
-            yield return PlaceFacing(restaurants[2].Position + new Vector3(-20f, 0f, 0f), restaurants[2].Position);
-            Save(dir, "b_largo_restaurante_3.png", main);
-
-            // (c) Avenida com trânsito: pista externa da avenida, virada para o norte.
-            Vector3 avenue = Node(4, 3) + new Vector3(8f, 0f, 30f);
-            TrafficLoop lead = null;
-
-            for (int attempt = 0; attempt < 30 && lead == null; attempt++)
-            {
-                yield return new WaitForSeconds(0.5f);
-
-                foreach (TrafficLoop car in Object.FindObjectsByType<TrafficLoop>(FindObjectsSortMode.None))
-                {
-                    Vector3 p = car.transform.position;
-                    float yaw = Mathf.Repeat(car.transform.eulerAngles.y + 180f, 360f) - 180f;
-                    bool alongAvenue = Mathf.Abs(yaw) < 8f || Mathf.Abs(Mathf.Abs(yaw) - 180f) < 8f;
-                    bool onAvenue = alongAvenue && Mathf.Abs(p.x - Node(4, 0).x) < 12f && p.z > Node(4, 1).z + 40f && p.z < Node(4, 8).z - 40f && car.DistanceToNextWaypoint > 50f;
-
-                    if (onAvenue)
-                    {
-                        lead = car;
-
-                        break;
-                    }
-                }
-            }
-
-            Assert.IsNotNull(lead, "Nenhum carro na avenida.");
-            avenue = lead.transform.position - lead.transform.forward * 24f;
+            // (b) O largo (piso hexagonal, fonte, Catedral) e os restaurantes, da rua, de viés para a fachada.
+            ViewPoint largo = View("largo");
             Flow.Bike.SetLocked(true);
-            Flow.Bike.Teleport(new Vector3(avenue.x, 0.1f, avenue.z), lead.transform.eulerAngles.y);
-            follow.Snap();
-            yield return new WaitForSeconds(0.3f);
-            Flow.Bike.Teleport(new Vector3(avenue.x + 0f, 0.1f, avenue.z) , lead.transform.eulerAngles.y);
+            Flow.Bike.Teleport(new Vector3(largo.Position.x, 0.1f, largo.Position.z), largo.Yaw);
             follow.Snap();
             yield return null;
-            Save(dir, "c_avenida_transito.png", main);
-            ReportStats(dir, "c_avenida_transito", main);
+            yield return null;
+            Save(dir, "b_largo.png", main);
 
-            // (d) Visão de cima do mapa todo, com a rota até o cliente.
+            for (int k = 0; k < Flow.Map.Restaurants.Length; k++)
+            {
+                ViewPoint restaurantView = View("restaurante" + k);
+                Flow.Bike.Teleport(new Vector3(restaurantView.Position.x, 0.1f, restaurantView.Position.z), restaurantView.Yaw);
+                follow.Snap();
+                yield return null;
+                yield return null;
+                Save(dir, $"b_restaurante_{k + 1}.png", main);
+            }
+
+            // (e1) Cruzamento com faixas de pedestre e semáforos; (e2) a curva diagonal.
+            ViewPoint crossing = View("cruzamento");
+            Flow.Bike.Teleport(new Vector3(crossing.Position.x, 0.1f, crossing.Position.z), crossing.Yaw);
+            follow.Snap();
+            yield return null;
+            yield return null;
+            Save(dir, "h_cruzamento_semaforos.png", main);
+
+            ViewPoint curve = View("curva");
+            Flow.Bike.Teleport(new Vector3(curve.Position.x, 0.1f, curve.Position.z), curve.Yaw);
+            follow.Snap();
+            yield return null;
+            yield return null;
+            Save(dir, "i_curva_diagonal.png", main);
+
+            // (g) Visão de cima do mapa todo, com a rota até o cliente.
             Flow.Bike.SetLocked(false);
             Vector3 restaurant = Flow.CurrentPlan.Restaurant.Position;
             Flow.Bike.Teleport(new Vector3(restaurant.x, 0.1f, restaurant.z), 0f);
@@ -230,7 +267,7 @@ namespace Entregador.Game.Tests
 
             var overview = new GameObject("CameraVisaoGeral").AddComponent<Camera>();
             overview.orthographic = true;
-            overview.orthographicSize = 720f;
+            overview.orthographicSize = 510f;
             overview.clearFlags = CameraClearFlags.SolidColor;
             overview.backgroundColor = new Color(0.36f, 0.5f, 0.3f);
             overview.nearClipPlane = 1f;
@@ -243,6 +280,11 @@ namespace Entregador.Game.Tests
             main.enabled = false;
             yield return null;
             Save(dir, "g_mapa_visto_de_cima.png", overview, false);
+
+            // Mapa só do chão (sem prédios), como o minimapa vê: o traçado das ruas.
+            overview.cullingMask = ~((1 << 2) | (1 << 8));
+            yield return null;
+            Save(dir, "g_mapa_ruas_sem_predios.png", overview, false);
             RenderSettings.fog = fog;
             main.enabled = true;
             lineRenderer.widthMultiplier = 1f;
@@ -250,7 +292,7 @@ namespace Entregador.Game.Tests
             Object.Destroy(overview.gameObject);
             Flow.Ui.SetHudVisible(true);
 
-            // (e) Dia de chuva: avança os dias de folga até chover.
+            // (h) Dia de chuva: avança os dias de folga até chover.
             Flow.NewWeek(123);
 
             for (int day = 1; day <= 7 && !Flow.Session.IsRainingToday; day++)
@@ -262,12 +304,12 @@ namespace Entregador.Game.Tests
             Flow.Ui.ClickModalButton("Começar turno");
             Flow.AcceptOffer();
             yield return null;
-            yield return PlaceOnRoute(residential, 0f);
+            yield return PlaceOnRoute(residential, residentialView.Yaw);
             yield return new WaitForSeconds(1.5f);
             Save(dir, "e_dia_de_chuva.png", main);
 
-            // Rua da avenida na chuva, para ver a chuva sobre os prédios.
-            yield return PlaceFacing(Node(4, 3) + new Vector3(8f, 0f, 30f), Node(4, 3) + new Vector3(8f, 0f, 80f));
+            // A avenida na chuva, para ver a chuva sobre os prédios.
+            yield return PlaceFacing(avenue.Position, avenue.Position + Heading(avenue.Yaw) * 50f);
             yield return new WaitForSeconds(0.5f);
             Save(dir, "e_chuva_avenida.png", main);
         }
@@ -287,7 +329,7 @@ namespace Entregador.Game.Tests
             var follow = main.GetComponent<FollowCamera>();
             StartDryWeek();
             Flow.Ui.SetHudVisible(false);
-            Vector3 spot = ClearStreetSpot(1, 2f);
+            Vector3 spot = ClearSpot(View("residencial"));
             Flow.Bike.SetLocked(true);
             Flow.Bike.Teleport(new Vector3(spot.x, 0.1f, spot.z), 0f);
             follow.Snap();
@@ -349,8 +391,8 @@ namespace Entregador.Game.Tests
             yield return new WaitForSeconds(1f);
 
             // Cinco personagens lado a lado (Titã) e dois Tornados atrás.
-            Vector3 origin = Flow.Map.BikeSpawn + new Vector3(0f, 0f, 4f);
-            float groundY = Flow.Bike.transform.position.y;
+            Vector3 origin = View("largo").Position + new Vector3(0f, 0f, 4f);
+            float groundY = 0.16f; // piso do largo (calçada 0,15 m + 1 cm)
             Personagem[] all = { Personagem.Jefinho, Personagem.Robsao, Personagem.Marcao, Personagem.SeuValdir, Personagem.Camila };
             MotoCor[] cores = { MotoCor.Vermelha, MotoCor.Preta, MotoCor.Azul, MotoCor.Branca, MotoCor.Vermelha };
 

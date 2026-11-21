@@ -787,9 +787,9 @@ namespace Entregador.Editor
 
         /// <summary>
         /// Comércio de 2 a 4 andares: térreo com loja (porta de enrolar, vitrine ou toldo e letreiro) e entrada do prédio,
-        /// andares de apartamento acima, laje com caixa d'água.
+        /// andares de apartamento acima, laje com caixa d'água. maxDepth limita o fundo (maior para pegadas grandes do OSM).
         /// </summary>
-        public static void Commerce(BuildingContext c, Frame fr, float w, float depth, Shop shop, int floors)
+        public static void Commerce(BuildingContext c, Frame fr, float w, float depth, Shop shop, int floors, float maxDepth = 14f)
         {
             System.Random r = c.Rnd;
             Vector2 uv = new Vector2((float)r.NextDouble() * 9f, (float)r.NextDouble() * 9f);
@@ -797,7 +797,7 @@ namespace Entregador.Editor
             float h0 = 4.0f;
             float h = h0 + (floors - 1) * FloorHeight;
             float parapet = 0.9f;
-            float d = Mathf.Min(depth, 14f);
+            float d = Mathf.Min(depth, maxDepth);
             GroundFloor(c, fr, wall, w, h0, shop, uv);
             UpperFloors(c, fr, wall, w, h0, floors - 1, uv, true, true);
             WallRect(c, wall, fr, 0f, w, h, h + parapet, 0f, uv);
@@ -807,7 +807,7 @@ namespace Entregador.Editor
         }
 
         /// <summary>Prédio de 5 a 12 andares: térreo comercial, janelas e varandas em geometria, casa de máquinas e caixa d'água.</summary>
-        public static void Tower(BuildingContext c, Frame fr, float w, float depth, Shop shop, int floors)
+        public static void Tower(BuildingContext c, Frame fr, float w, float depth, Shop shop, int floors, float maxDepth = 14f)
         {
             System.Random r = c.Rnd;
             Vector2 uv = new Vector2((float)r.NextDouble() * 9f, (float)r.NextDouble() * 9f);
@@ -815,7 +815,7 @@ namespace Entregador.Editor
             float h0 = 4.5f;
             float h = h0 + floors * FloorHeight;
             float parapet = 1.1f;
-            float d = Mathf.Min(depth, 14f);
+            float d = Mathf.Min(depth, maxDepth);
             GroundFloor(c, fr, wall, w, h0, shop, uv, true);
             TowerFloors(c, fr, wall, w, h0, floors, uv);
             WallRect(c, wall, fr, 0f, w, h, h + parapet, 0f, uv);

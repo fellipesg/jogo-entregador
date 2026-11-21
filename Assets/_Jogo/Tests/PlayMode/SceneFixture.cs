@@ -34,6 +34,18 @@ namespace Entregador.Game.Tests
 
         protected static Place Restaurant(GameFlow flow) => flow.CurrentPlan.Restaurant;
 
+        /// <summary>Ponto de vista nomeado gerado pelo CityBuilder (residencial, avenida, largo, cruzamento, curva, restauranteN).</summary>
+        protected ViewPoint View(string name)
+        {
+            ViewPoint point = Flow.Map.FindViewPoint(name);
+            Assert.IsNotNull(point, "Ponto de vista não gerado: " + name);
+
+            return point;
+        }
+
+        /// <summary>Direção de avanço (plano) de um yaw em graus.</summary>
+        protected static Vector3 Heading(float yaw) => Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
+
         protected static void TeleportNear(GameFlow flow, Place place)
         {
             flow.Bike.Teleport(new Vector3(place.Position.x, 0.1f, place.Position.z), 0f);
