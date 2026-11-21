@@ -43,3 +43,6 @@ crashlytics-build.properties
 
 # macOS
 .DS_Store
+
+# Malhas geradas pelo CityBuilder (~140 MB): regerar com BuildFromCommandLine depois de clonar
+Assets/_Jogo/Scenes/SantoAmaro_Malhas*

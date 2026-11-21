@@ -13,6 +13,46 @@ namespace Entregador.Editor
         public const string PipelinePath = SettingsFolder + "/Mobile_URP.asset";
         public const string RendererPath = SettingsFolder + "/Mobile_Renderer.asset";
 
+        /// <summary>Procura o renderer feature de SSAO do renderer mobile (null se não existir).</summary>
+        public static ScriptableRendererFeature FindSsao()
+        {
+            var renderer = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(RendererPath);
+
+            if (renderer == null)
+            {
+                return null;
+            }
+
+            foreach (ScriptableRendererFeature feature in renderer.rendererFeatures)
+            {
+                if (feature is ScreenSpaceAmbientOcclusion)
+                {
+                    return feature;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>Garante o SSAO no renderer mobile, desligado: o WeatherLook o liga só com a flag de qualidade UseSsao.</summary>
+        private static void EnsureSsao()
+        {
+            var renderer = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(RendererPath);
+
+            if (renderer == null || FindSsao() != null)
+            {
+                return;
+            }
+
+            var feature = ScriptableObject.CreateInstance<ScreenSpaceAmbientOcclusion>();
+            feature.name = "SSAO";
+            AssetDatabase.AddObjectToAsset(feature, renderer);
+            renderer.rendererFeatures.Add(feature);
+            feature.SetActive(false);
+            EditorUtility.SetDirty(renderer);
+            AssetDatabase.SaveAssets();
+        }
+
         [MenuItem("Jogo/Configurar URP mobile e paisagem")]
         public static void Apply()
         {
@@ -34,11 +74,16 @@ namespace Entregador.Editor
                 AssetDatabase.CreateAsset(pipeline, PipelinePath);
             }
 
-            pipeline.supportsHDR = false;
+            pipeline.supportsHDR = true;
             pipeline.msaaSampleCount = 2;
-            pipeline.shadowDistance = 45f;
+            pipeline.shadowDistance = 60f;
             pipeline.shadowCascadeCount = 1;
             pipeline.mainLightShadowmapResolution = 1024;
+            var serialized = new SerializedObject(pipeline);
+            serialized.FindProperty("m_SoftShadowsSupported").boolValue = true;
+            serialized.FindProperty("m_SoftShadowQuality").intValue = 1;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EnsureSsao();
             pipeline.renderScale = 1f;
             EditorUtility.SetDirty(pipeline);
             AssetDatabase.SaveAssets();

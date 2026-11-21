@@ -1,0 +1,7 @@
+Recorte do OpenStreetMap: centro de Santo Amaro, São Paulo (Largo Treze de Maio).
+Caixa: lat -23.6578 a -23.6488, lon -46.7112 a -46.7014 (cerca de 1 km x 1 km).
+Baixado via Overpass API em 2026-11-21.
+
+Dados (c) OpenStreetMap contributors, licença ODbL 1.0.
+https://www.openstreetmap.org/copyright
+O jogo deve exibir o crédito "© OpenStreetMap contributors" (ex.: na tela de créditos).

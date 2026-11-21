@@ -43,6 +43,7 @@ namespace Entregador.Game
         [SerializeField] private Camera _mainCamera;
         [SerializeField] private int _seed;
         [SerializeField] private RainEffect _rain;
+        [SerializeField] private WeatherLook _look;
 
         private IGameRandom _random;
         private Incident _runIncident;
@@ -100,6 +101,12 @@ namespace Entregador.Game
         }
 
         /// <summary>Liga o efeito de chuva (partículas que seguem a câmera) aos dias de chuva.</summary>
+        /// <summary>Liga o visual de clima (skybox, sol, pós-processamento, chão molhado).</summary>
+        public void AttachLook(WeatherLook look)
+        {
+            _look = look;
+        }
+
         public void AttachRain(RainEffect rain)
         {
             _rain = rain;
@@ -718,6 +725,19 @@ namespace Entregador.Game
         private void ApplyWeather(bool rain)
         {
             _bike.SetWet(rain);
+
+            if (_look != null)
+            {
+                _look.Apply(rain ? LookKind.Rain : LookKind.Sunny);
+
+                if (_rain != null)
+                {
+                    _rain.SetRaining(rain);
+                }
+
+                return;
+            }
+
             Color sky = rain ? new Color(0.42f, 0.47f, 0.52f) : new Color(0.55f, 0.75f, 0.95f);
 
             if (_mainCamera != null)

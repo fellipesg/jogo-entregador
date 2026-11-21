@@ -17,7 +17,7 @@ namespace Entregador.Editor
     /// moto, câmeras, grafo de ruas, restaurantes, endereços, buracos e o objeto GameRoot que roda o jogo.
     /// Uso: menu Jogo/Gerar cidade, ou -executeMethod Entregador.Editor.CityBuilder.BuildFromCommandLine.
     /// </summary>
-    public static class CityBuilder
+    public static partial class CityBuilder
     {
         public const string ScenePath = "Assets/_Jogo/Scenes/SantoAmaro.unity";
 
@@ -69,6 +69,8 @@ namespace Entregador.Editor
             Directory.CreateDirectory("Assets/_Jogo/Scenes");
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
+            MeshStore.Begin();
+            GroundRenderers.Clear();
             Materials m = new Materials();
             var world = new GameObject("Cidade");
             Transform roads = Group(world.transform, "Ruas");
@@ -116,7 +118,9 @@ namespace Entregador.Editor
             var traffic = new GameObject("Transito");
             BuildTraffic(traffic.transform, bike.transform);
 
-            BuildLighting(m, out Light sun);
+            var dryMaterials = new[] { CityStyle.Asphalt(false), CityStyle.AsphaltRed(false), CityStyle.Sidewalk(false), CityStyle.Paving(false) };
+            var wetMaterials = new[] { CityStyle.Asphalt(true), CityStyle.AsphaltRed(true), CityStyle.Sidewalk(true), CityStyle.Paving(true) };
+            WeatherLook look = LightingSetup.Build(GroundRenderers.ToArray(), dryMaterials, wetMaterials, out Light sun);
             Camera main = BuildMainCamera(bike);
             RainEffect rain = BuildRain(main.transform);
             MinimapView minimap = BuildMinimap(bike);
@@ -130,9 +134,10 @@ namespace Entregador.Editor
             var flow = root.AddComponent<GameFlow>();
             flow.Configure(map, bike, bike.GetComponent<BikeInput>(), tracker, route, main.GetComponent<FollowCamera>(), minimap, ui, tuning, sun, main);
             flow.AttachRain(rain);
+            flow.AttachLook(look);
 
-            MarkStatic(world.transform);
 
+            MeshStore.Save();
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             AssetDatabase.SaveAssets();
@@ -225,395 +230,6 @@ namespace Entregador.Editor
             return go.transform;
         }
 
-        // ---------- Chão e ruas ----------
-
-        private static void BuildGround(Transform world, Materials m)
-        {
-            float size = _span + 400f;
-            CityPieces.Box(world, "Chao", new Vector3(0f, -0.5f, 0f), new Vector3(size, 1f, size), m.Grass, true);
-
-            // Paredes invisíveis na borda do mapa.
-            float half = _span * 0.5f + 20f;
-            Wall(world, "LimiteNorte", new Vector3(0f, 2.5f, half), new Vector3(2f * half, 5f, 2f));
-            Wall(world, "LimiteSul", new Vector3(0f, 2.5f, -half), new Vector3(2f * half, 5f, 2f));
-            Wall(world, "LimiteLeste", new Vector3(half, 2.5f, 0f), new Vector3(2f, 5f, 2f * half));
-            Wall(world, "LimiteOeste", new Vector3(-half, 2.5f, 0f), new Vector3(2f, 5f, 2f * half));
-        }
-
-        private static void Wall(Transform parent, string name, Vector3 center, Vector3 size)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            go.transform.position = center;
-            go.AddComponent<BoxCollider>().size = size;
-        }
-
-        // ---------- Ruas (tiles do Kit City Roads) ----------
-
-        /// <summary>Altura do meio-fio das calçadas, em metros. A moto sobe por uma rampa de colisão.</summary>
-        private const float CurbHeight = 0.15f;
-
-        /// <summary>Quanto a rampa avança na calçada (m). 0,15 m em 0,8 m dá cerca de 10,6 graus.</summary>
-        private const float CurbRun = 0.8f;
-
-        /// <summary>Distância do alinhamento da frente dos prédios até a esquina do quarteirão.</summary>
-        private const float FrontInset = SidewalkInset;
-
-        /// <summary>Fundo máximo de um prédio na fileira (m); o miolo do quarteirão fica vazio.</summary>
-        private const float RowDepth = 15f;
-
-        private const float TileLength = 25f;
-
-        private static void BuildRoads(Transform parent, Materials m)
-        {
-            // Ruas verticais (ao longo de Z). A avenida são duas colunas de tile de 12 m lado a lado.
-            for (int i = 0; i < StreetCount; i++)
-            {
-                float[] columns = i == AvenueIndex ? new[] { _cx[i] - StreetHalfWidth, _cx[i] + StreetHalfWidth } : new[] { _cx[i] };
-
-                foreach (float x in columns)
-                {
-                    for (int j = 0; j < StreetCount; j++)
-                    {
-                        CityPieces.RoadTile(parent, "road-crossroad", new Vector3(x, 0f, _cz[j]), 0f, 12f, 12f);
-                    }
-
-                    for (int j = 0; j < BlockCount; j++)
-                    {
-                        LaySpan(parent, new Vector3(x, 0f, BlockZ0(j)), new Vector3(x, 0f, BlockZ1(j)), 90f);
-                    }
-                }
-            }
-
-            // Ruas horizontais (ao longo de X): só os trechos entre os cruzamentos, que já foram colocados acima.
-            for (int j = 0; j < StreetCount; j++)
-            {
-                for (int i = 0; i < BlockCount; i++)
-                {
-                    LaySpan(parent, new Vector3(BlockX0(i), 0f, _cz[j]), new Vector3(BlockX1(i), 0f, _cz[j]), 0f);
-                }
-            }
-
-            // Corredor de ônibus vermelho no meio da avenida, só nos trechos (os cruzamentos ficam livres).
-            for (int j = 0; j < BlockCount; j++)
-            {
-                float z0 = BlockZ0(j);
-                float z1 = BlockZ1(j);
-                CityPieces.Box(parent, "CorredorOnibus", new Vector3(_cx[AvenueIndex], 0.05f, (z0 + z1) * 0.5f), new Vector3(5.2f, 0.02f, z1 - z0), m.BusLane);
-            }
-        }
-
-        /// <summary>Cobre o trecho de rua de a até b com tiles de 25 m (12 m de largura).</summary>
-        private static void LaySpan(Transform parent, Vector3 a, Vector3 b, float yaw)
-        {
-            float length = Vector3.Distance(a, b);
-            int count = Mathf.Max(1, Mathf.RoundToInt(length / TileLength));
-            float step = length / count;
-            Vector3 direction = (b - a).normalized;
-
-            for (int k = 0; k < count; k++)
-            {
-                Vector3 center = a + direction * (step * (k + 0.5f));
-                CityPieces.RoadTile(parent, "road-straight", center, yaw, 12f, step);
-            }
-        }
-
-        // ---------- Quarteirões ----------
-
-        private static bool IsCommercialBlock(int i, int j) =>
-            i == AvenueIndex - 1 || i == AvenueIndex || (j >= LargoBlockZ - 1 && j <= LargoBlockZ + 1 && i >= AvenueIndex - 2 && i <= AvenueIndex + 1);
-
-        private static readonly string[] CommercialModels =
-        {
-            "building-a", "building-b", "building-c", "building-d", "building-e", "building-f", "building-g",
-            "building-h", "building-i", "building-j", "building-k", "building-l", "building-m", "building-n",
-        };
-
-        private static readonly string[] SkyscraperModels =
-        {
-            "building-skyscraper-a", "building-skyscraper-b", "building-skyscraper-c", "building-skyscraper-d", "building-skyscraper-e",
-        };
-
-        private static readonly string[] HouseModels =
-        {
-            "building-type-a", "building-type-b", "building-type-c", "building-type-d", "building-type-e", "building-type-f",
-            "building-type-g", "building-type-h", "building-type-i", "building-type-j", "building-type-k", "building-type-l",
-            "building-type-m", "building-type-n", "building-type-o", "building-type-p", "building-type-q", "building-type-r",
-            "building-type-s", "building-type-t", "building-type-u",
-        };
-
-        private static void BuildBlocks(Transform blocks, Transform buildings, Transform props, Materials m, System.Random random, List<EdgeSpot> restaurantSpots, out Vector3 largoCenter)
-        {
-            largoCenter = Vector3.zero;
-
-            for (int i = 0; i < BlockCount; i++)
-            {
-                for (int j = 0; j < BlockCount; j++)
-                {
-                    float x0 = BlockX0(i);
-                    float x1 = BlockX1(i);
-                    float z0 = BlockZ0(j);
-                    float z1 = BlockZ1(j);
-                    var center = new Vector3((x0 + x1) * 0.5f, 0f, (z0 + z1) * 0.5f);
-
-                    if (i == LargoBlockX && j == LargoBlockZ)
-                    {
-                        largoCenter = center;
-                        BuildLargo(blocks, props, m, x0, x1, z0, z1);
-
-                        continue;
-                    }
-
-                    Pavement(blocks, $"Calcada_{i}_{j}", x0, x1, z0, z1, CurbHeight, m.Sidewalk);
-
-                    bool commercialBlock = IsCommercialBlock(i, j);
-
-                    // Miolo (quintais ou pátio de concreto) visto de cima, escondido atrás das fileiras de prédios.
-                    CityPieces.Box(blocks, $"Miolo_{i}_{j}", new Vector3(center.x, CurbHeight + 0.01f, center.z), new Vector3(x1 - x0 - 14f, 0.02f, z1 - z0 - 14f), commercialBlock ? m.Courtyard : m.Yard);
-
-                    // Miolo sólido: o que há atrás da frente dos prédios. Um collider por quarteirão.
-                    var solid = new GameObject($"Predios_{i}_{j}");
-                    solid.transform.SetParent(blocks, false);
-                    solid.transform.position = new Vector3(center.x, CurbHeight + 4f, center.z);
-                    solid.AddComponent<BoxCollider>().size = new Vector3(x1 - x0 - 2f * FrontInset, 8f, z1 - z0 - 2f * FrontInset);
-
-                    bool commercial = commercialBlock;
-                    var rowRandom = new System.Random(1000 + i * 31 + j);
-
-                    // Quatro fileiras de fachadas voltadas para as ruas.
-                    FillRow(buildings, props, commercial, i, new Vector3(x0 + FrontInset, 0f, z0 + FrontInset), Vector3.right, Vector3.back, x1 - x0 - 2f * FrontInset, FindRestaurant(restaurantSpots, true, j, i, 1), rowRandom, m);
-                    FillRow(buildings, props, commercial, i, new Vector3(x1 - FrontInset, 0f, z1 - FrontInset), Vector3.left, Vector3.forward, x1 - x0 - 2f * FrontInset, FindRestaurant(restaurantSpots, true, j + 1, i, -1), rowRandom, m);
-                    float sideLength = z1 - z0 - 2f * FrontInset - 2f * RowDepth;
-                    FillRow(buildings, props, commercial, i, new Vector3(x0 + FrontInset, 0f, z0 + FrontInset + RowDepth), Vector3.forward, Vector3.left, sideLength, FindRestaurant(restaurantSpots, false, i, j, 1), rowRandom, m);
-                    FillRow(buildings, props, commercial, i, new Vector3(x1 - FrontInset, 0f, z1 - FrontInset - RowDepth), Vector3.back, Vector3.right, sideLength, FindRestaurant(restaurantSpots, false, i + 1, j, -1), rowRandom, m);
-                }
-            }
-        }
-
-        /// <summary>Índice do restaurante cujo ponto está nesta borda do quarteirão, ou -1.</summary>
-        private static int FindRestaurant(List<EdgeSpot> spots, bool horizontal, int street, int segment, int side)
-        {
-            for (int k = 0; k < spots.Count; k++)
-            {
-                EdgeSpot s = spots[k];
-
-                if (s.Horizontal == horizontal && s.Street == street && s.Segment == segment && s.Side == side)
-                {
-                    return k;
-                }
-            }
-
-            return -1;
-        }
-
-        /// <summary>
-        /// Calçada/piso: caixa visual de altura height (sem collider), uma laje plana com collider e quatro rampas
-        /// de meio-fio. Assim a moto sobe a calçada em vez de bater numa parede.
-        /// </summary>
-        private static void Pavement(Transform parent, string name, float x0, float x1, float z0, float z1, float height, Material material)
-        {
-            float cx = (x0 + x1) * 0.5f;
-            float cz = (z0 + z1) * 0.5f;
-            Transform holder = Group(parent, name);
-            CityPieces.Box(holder, "Piso", new Vector3(cx, height * 0.5f, cz), new Vector3(x1 - x0, height, z1 - z0), material);
-
-            var slab = new GameObject("Laje");
-            slab.transform.SetParent(holder, false);
-            slab.transform.position = new Vector3(cx, height * 0.5f, cz);
-            slab.AddComponent<BoxCollider>().size = new Vector3(x1 - x0 - 2f * CurbRun, height, z1 - z0 - 2f * CurbRun);
-
-            Ramp(holder, new Vector3(x0, 0f, cz), Vector3.right, z1 - z0, height);
-            Ramp(holder, new Vector3(x1, 0f, cz), Vector3.left, z1 - z0, height);
-            Ramp(holder, new Vector3(cx, 0f, z0), Vector3.forward, x1 - x0, height);
-            Ramp(holder, new Vector3(cx, 0f, z1), Vector3.back, x1 - x0, height);
-        }
-
-        private static void Ramp(Transform parent, Vector3 edgePoint, Vector3 inward, float edgeLength, float height)
-        {
-            Vector3 climb = (inward * CurbRun + Vector3.up * height).normalized;
-            Quaternion rotation = Quaternion.LookRotation(climb, Vector3.up);
-            float slope = Mathf.Sqrt(CurbRun * CurbRun + height * height);
-            const float thickness = 0.1f;
-
-            var go = new GameObject("RampaMeioFio");
-            go.transform.SetParent(parent, false);
-            Vector3 surfaceMiddle = edgePoint + inward * (CurbRun * 0.5f) + Vector3.up * (height * 0.5f);
-            go.transform.SetPositionAndRotation(surfaceMiddle - (rotation * Vector3.up) * (thickness * 0.5f), rotation);
-            go.AddComponent<BoxCollider>().size = new Vector3(edgeLength, thickness, slope);
-        }
-
-        /// <summary>
-        /// Preenche uma borda do quarteirão com prédios (comerciais ou casas) lado a lado, voltados para a rua.
-        /// start é o início da borda na linha da frente; along é a direção ao longo dela; facing é a direção da frente.
-        /// Um restaurante (índice >= 0) ocupa o meio da borda com prédio maior, toldos, guarda-sóis e letreiro.
-        /// </summary>
-        private static void FillRow(Transform parent, Transform props, bool commercial, int column, Vector3 start, Vector3 along, Vector3 facing, float length, int restaurant, System.Random random, Materials m)
-        {
-            if (restaurant < 0)
-            {
-                FillSegment(parent, props, commercial, column, start, along, facing, length, random);
-
-                return;
-            }
-
-            const float slot = 26f;
-            float half = (length - slot) * 0.5f;
-            FillSegment(parent, props, commercial, column, start, along, facing, half, random);
-            FillSegment(parent, props, commercial, column, start + along * (half + slot), along, facing, half, random);
-            BuildRestaurantFront(parent, props, restaurant, start + along * (half + slot * 0.5f), facing, m);
-        }
-
-        private static void FillSegment(Transform parent, Transform props, bool commercial, int column, Vector3 start, Vector3 along, Vector3 facing, float length, System.Random random)
-        {
-            Kit kit = commercial ? Kit.CityKitCommercial : Kit.CityKitSuburban;
-            float maxScale = commercial ? CityPieces.CityScale : CityPieces.SuburbScale;
-            float depthLimit = commercial ? RowDepth : RowDepth - 1f;
-            bool skyscrapers = commercial && (column == AvenueIndex - 1 || column == AvenueIndex);
-            var chosen = new List<(string model, float scale, float width)>();
-            float stretch = 1f;
-
-            for (int attempt = 0; attempt < 60; attempt++)
-            {
-                chosen.Clear();
-                float sum = 0f;
-
-                for (int guard = 0; guard < 40 && sum < length - 3f; guard++)
-                {
-                    string model = PickModel(commercial, skyscrapers, random);
-                    Bounds b = CityPieces.ModelBounds(kit, model);
-                    float scale = Mathf.Min(maxScale, depthLimit / b.size.z);
-                    float width = b.size.x * scale;
-
-                    if (sum + width > length * 1.12f)
-                    {
-                        continue;
-                    }
-
-                    chosen.Add((model, scale, width));
-                    sum += width;
-                }
-
-                stretch = sum > 0f ? length / sum : 1f;
-
-                if (chosen.Count > 0 && stretch > 0.9f && stretch < 1.14f)
-                {
-                    break;
-                }
-            }
-
-            // Orientação: no kit Commercial a frente é -Z do modelo; no Suburban é +Z.
-            float yaw = commercial ? Mathf.Atan2(-facing.x, -facing.z) * Mathf.Rad2Deg : Mathf.Atan2(facing.x, facing.z) * Mathf.Rad2Deg;
-            Vector3 inward = -facing;
-            float cursor = 0f;
-
-            foreach (var (model, scale, width) in chosen)
-            {
-                float w = width * stretch;
-                Bounds b = CityPieces.ModelBounds(kit, model);
-                float depth = b.size.z * scale;
-                Vector3 position = start + along * (cursor + w * 0.5f) + inward * (depth * 0.5f);
-                var stretched = new Vector3(scale * stretch, scale, scale);
-
-                // Altura: um pouco de variação no kit comercial, sem deformar as janelas demais.
-                if (commercial && model.StartsWith("building-skyscraper") == false)
-                {
-                    stretched.y *= 0.95f + 0.2f * (float)random.NextDouble();
-                }
-
-                CityPieces.Model(parent, kit, model, position, yaw, stretched);
-                cursor += w;
-            }
-
-            // Árvores de calçada nas ruas residenciais, entre a frente das casas e o meio-fio.
-            if (!commercial)
-            {
-                int trees = Mathf.Max(1, Mathf.RoundToInt(length / 22f));
-
-                for (int t = 0; t < trees; t++)
-                {
-                    float at = length * (t + 0.5f + ((float)random.NextDouble() - 0.5f) * 0.4f) / trees;
-                    Vector3 treePosition = start + along * at + facing * 1.6f;
-                    CityPieces.Tree(props, "ArvoreRua", treePosition + Vector3.up * CurbHeight, 4.5f + 1.5f * (float)random.NextDouble(), false, false);
-                }
-            }
-        }
-
-        private static string PickModel(bool commercial, bool skyscrapers, System.Random random)
-        {
-            if (!commercial)
-            {
-                return HouseModels[random.Next(HouseModels.Length)];
-            }
-
-            if (skyscrapers && random.NextDouble() < 0.1)
-            {
-                return SkyscraperModels[random.Next(SkyscraperModels.Length)];
-            }
-
-            return CommercialModels[random.Next(CommercialModels.Length)];
-        }
-
-        /// <summary>
-        /// Restaurante: prédio largo (building-k) recuado do meio-fio para caber o terraço, com toldos e guarda-sóis
-        /// na frente e uma faixa colorida (a cor de cada restaurante) bem visível acima da porta.
-        /// </summary>
-        private static void BuildRestaurantFront(Transform parent, Transform props, int index, Vector3 slotCenterOnFrontLine, Vector3 facing, Materials m)
-        {
-            const string model = "building-k";
-            const float terrace = 3f;
-            Bounds b = CityPieces.ModelBounds(Kit.CityKitCommercial, model);
-            float width = 24f;
-            float scale = width / b.size.x;
-            float depth = b.size.z * scale;
-            Vector3 inward = -facing;
-            Vector3 right = Vector3.Cross(Vector3.up, facing).normalized;
-            Vector3 frontLine = slotCenterOnFrontLine + inward * terrace;
-            float yaw = Mathf.Atan2(-facing.x, -facing.z) * Mathf.Rad2Deg;
-
-            CityPieces.Model(parent, Kit.CityKitCommercial, model, frontLine + inward * (depth * 0.5f), yaw, scale).name = "Restaurante_" + index;
-
-            // Faixa colorida do restaurante acima das portas.
-            GameObject banner = CityPieces.Box(props, "FaixaRestaurante" + index, Vector3.zero, new Vector3(width * 0.9f, 1.6f, 0.4f), m.Restaurants[index % m.Restaurants.Length]);
-            banner.transform.SetPositionAndRotation(frontLine + facing * 0.35f + Vector3.up * 5.2f, Quaternion.LookRotation(facing, Vector3.up));
-
-            // Toldos (rotacionados 180 graus: o lado de fora do modelo aponta para a rua) e guarda-sóis no terraço.
-            float awningScale = 8f;
-            float awningYaw = yaw + 180f;
-
-            for (int k = -1; k <= 1; k++)
-            {
-                Vector3 position = frontLine + right * (k * 6.6f) + facing * (-0.1f * awningScale) + Vector3.up * CurbHeight;
-                CityPieces.Model(props, Kit.CityKitCommercial, "detail-awning-wide", position, awningYaw, awningScale).name = "Toldo";
-            }
-
-            for (int k = 0; k < 4; k++)
-            {
-                float side = (k - 1.5f) * 5.5f;
-                Vector3 position = frontLine + right * side + facing * 2.6f + Vector3.up * CurbHeight;
-                CityPieces.Model(props, Kit.CityKitCommercial, k % 2 == 0 ? "detail-parasol-a" : "detail-parasol-b", position, k * 70f, 5.5f).name = "GuardaSol";
-            }
-        }
-
-        private static void BuildLargo(Transform blocks, Transform props, Materials m, float x0, float x1, float z0, float z1)
-        {
-            var center = new Vector3((x0 + x1) * 0.5f, 0f, (z0 + z1) * 0.5f);
-            Pavement(blocks, "LargoPiso", x0, x1, z0, z1, 0.1f, m.Plaza);
-            CityPieces.Cylinder(props, "LargoFonte", new Vector3(center.x, 0.6f, center.z), 4f, 1.2f, m.Fountain, true);
-            CityPieces.Cylinder(props, "LargoFonteTopo", new Vector3(center.x, 1.8f, center.z), 1.1f, 1.6f, m.Fountain);
-
-            // Árvores em volta, longe das ruas e do caminho do meio.
-            var spots = new[]
-            {
-                new Vector2(-32f, -32f), new Vector2(32f, -32f), new Vector2(-32f, 32f), new Vector2(32f, 32f),
-                new Vector2(0f, 36f), new Vector2(0f, -36f), new Vector2(-36f, 0f), new Vector2(36f, 0f),
-            };
-
-            for (int k = 0; k < spots.Length; k++)
-            {
-                CityPieces.Tree(props, "LargoArvore" + k, new Vector3(center.x + spots[k].x, 0.1f, center.z + spots[k].y), 8f + (k % 3), true);
-            }
-        }
-
         // ---------- Grafo ----------
 
         private static RoadGraph BuildGraph(GameObject world)
@@ -683,19 +299,6 @@ namespace Entregador.Editor
                 Vector3 position = SpotPosition(spots[k]);
                 GameObject beam = BuildMarker(markers, names[k], position, m.RestaurantPad, m);
                 places[k] = new Place(names[k], position, beam);
-
-                // Letreiro: texto alto que olha para a câmera.
-                var label = new GameObject("Letreiro");
-                label.transform.SetParent(beam.transform.parent, false);
-                label.transform.position = position + Vector3.up * 11f;
-                var text = label.AddComponent<TextMesh>();
-                text.text = names[k];
-                text.fontSize = 64;
-                text.characterSize = 0.14f;
-                text.anchor = TextAnchor.MiddleCenter;
-                text.alignment = TextAlignment.Center;
-                text.color = Color.white;
-                label.AddComponent<FaceCamera>();
             }
 
             return places;
@@ -863,7 +466,25 @@ namespace Entregador.Editor
                     continue;
                 }
 
-                GameObject hole = CityPieces.Cylinder(parent, "Buraco" + made, position + Vector3.up * 0.06f, 1.6f, 0.06f, m.Pothole);
+                // Buraco: remendo de asfalto escuro, borda esfarelada e a cratera quase preta no meio (irregulares).
+                var patch = new MeshBatch();
+                float spin = (float)random.NextDouble() * 6f;
+                float[] outer = new float[10];
+                float[] mid = new float[10];
+                float[] pit = new float[10];
+
+                for (int v = 0; v < 10; v++)
+                {
+                    float jitter = 0.78f + 0.4f * (float)random.NextDouble();
+                    outer[v] = 1.55f * jitter;
+                    mid[v] = 1.15f * (0.8f + 0.4f * (float)random.NextDouble());
+                    pit[v] = 0.7f * (0.7f + 0.5f * (float)random.NextDouble());
+                }
+
+                patch.Fan(CityStyle.AsphaltPatch(), position + Vector3.up * 0.012f, outer, spin);
+                patch.Fan(PbrMaterials.Flat("BuracoBorda", new Color(0.09f, 0.09f, 0.1f), 0.1f), position + Vector3.up * 0.016f, mid, spin + 0.3f);
+                patch.Fan(PbrMaterials.Flat("BuracoFundo", new Color(0.025f, 0.025f, 0.03f), 0.05f), position + Vector3.up * 0.02f, pit, spin + 0.7f);
+                GameObject hole = patch.Build(parent, "Buraco" + made, false);
                 GameObject zone = new GameObject("ZonaBuraco" + made);
                 zone.transform.SetParent(hole.transform.parent, false);
                 zone.transform.position = position + Vector3.up * 1f;
@@ -887,289 +508,22 @@ namespace Entregador.Editor
             return positions;
         }
 
-        // ---------- Mobiliário urbano, carros parados e trânsito ----------
-
-        private static readonly string[] ParkedCarModels = { "sedan", "hatchback-sports", "suv", "taxi", "van", "delivery", "truck", "sedan", "hatchback-sports" };
-
-        /// <summary>Distância do centro da rua até o meio de um carro estacionado (rente ao meio-fio).</summary>
-        private static float ParkOffset(float halfWidth) => halfWidth - 1.6f;
-
-        /// <summary>Faixa de trânsito (distância do centro da rua): na avenida a pista externa.</summary>
-        private static float LaneOffset(bool avenue) => avenue ? 8f : 2f;
-
-        private static bool NearAny(Vector3 position, List<Vector3> points, float distance)
-        {
-            foreach (Vector3 other in points)
-            {
-                if (Vector3.Distance(position, other) < distance)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static float YawFacing(Vector3 direction) => Mathf.Atan2(-direction.x, -direction.z) * Mathf.Rad2Deg;
-
-        /// <summary>Poste com collider fino só na base (o braço do poste fica acima da moto).</summary>
-        private static GameObject SolidPole(Transform parent, string model, Kit kit, Vector3 position, float yaw, float scale)
-        {
-            GameObject pole = CityPieces.Model(parent, kit, model, position, yaw, scale);
-            var capsule = pole.AddComponent<CapsuleCollider>();
-            capsule.radius = 0.22f / scale;
-            capsule.height = 3f / scale;
-            capsule.center = new Vector3(0f, 1.5f / scale, 0f);
-
-            return pole;
-        }
-
-        private static void BuildProps(Transform parent, System.Random random, List<Vector3> avoid)
-        {
-            Transform lights = Group(parent, "Postes");
-            Transform signs = Group(parent, "Placas");
-            Transform cars = Group(parent, "CarrosParados");
-            Transform dumpsters = Group(parent, "Cacambas");
-            var parked = new List<Vector3>();
-
-            // Postes de luz: um por trecho de rua, alternando o lado, com o braço sobre a rua.
-            for (int i = 0; i < StreetCount; i++)
-            {
-                for (int j = 0; j < BlockCount; j++)
-                {
-                    float t = (i + j) % 2 == 0 ? 0.25f : 0.75f;
-                    int side = (i + j) % 2 == 0 ? 1 : -1;
-                    var position = new Vector3(_cx[i] + side * (_hwx[i] - 0.7f), 0.04f, Mathf.Lerp(_cz[j], _cz[j + 1], t));
-
-                    if (NearAny(position, avoid, 9f))
-                    {
-                        continue;
-                    }
-
-                    SolidPole(lights, "light-square", Kit.CityKitRoads, position, YawFacing(new Vector3(-side, 0f, 0f)), 10f);
-                }
-            }
-
-            for (int j = 0; j < StreetCount; j++)
-            {
-                for (int i = 0; i < BlockCount; i++)
-                {
-                    float t = (i + j) % 2 == 0 ? 0.75f : 0.25f;
-                    int side = (i + j) % 2 == 0 ? -1 : 1;
-                    var position = new Vector3(Mathf.Lerp(_cx[i], _cx[i + 1], t), 0.04f, _cz[j] + side * (_hwz[j] - 0.7f));
-
-                    if (NearAny(position, avoid, 9f))
-                    {
-                        continue;
-                    }
-
-                    SolidPole(lights, "light-square", Kit.CityKitRoads, position, YawFacing(new Vector3(0f, 0f, -side)), 10f);
-                }
-            }
-
-            // Semáforos nos cruzamentos da avenida (cantos opostos) e placas de PARE nas ruas pequenas.
-            for (int j = 0; j < StreetCount; j++)
-            {
-                Vector3 center = new Vector3(_cx[AvenueIndex], 0.04f, _cz[j]);
-
-                foreach (int sign in new[] { 1, -1 })
-                {
-                    var corner = center + new Vector3(sign * (AvenueHalfWidth - 0.8f), 0f, sign * (StreetHalfWidth - 0.8f));
-                    SolidPole(signs, "traffic-light", Kit.CityKitRoads, corner, YawFacing(center - corner), 12f);
-                }
-            }
-
-            for (int k = 0; k < 14; k++)
-            {
-                int i = random.Next(StreetCount);
-
-                if (i == AvenueIndex || i == AvenueIndex - 1 || i == AvenueIndex + 1)
-                {
-                    continue;
-                }
-
-                int j = random.Next(StreetCount);
-                Vector3 center = new Vector3(_cx[i], 0.04f, _cz[j]);
-                var corner = center + new Vector3(StreetHalfWidth - 0.8f, 0f, StreetHalfWidth - 0.8f);
-                SolidPole(signs, k % 3 == 0 ? "road-sign-street" : "road-sign-stop", Kit.CityKitRoads, corner, YawFacing(center - corner), 6f);
-            }
-
-            // Caçambas de lixo na calçada.
-            for (int k = 0; k < 9; k++)
-            {
-                int i = random.Next(BlockCount);
-                int j = random.Next(BlockCount);
-
-                if (i == LargoBlockX && j == LargoBlockZ)
-                {
-                    continue;
-                }
-
-                float along = 0.2f + 0.6f * (float)random.NextDouble();
-                bool west = random.Next(2) == 0;
-                float x = west ? BlockX0(i) + 2.0f : BlockX1(i) - 2.0f;
-                float z = Mathf.Lerp(BlockZ0(j), BlockZ1(j), along);
-                var position = new Vector3(x, CurbHeight, z);
-
-                if (NearAny(position, avoid, 14f))
-                {
-                    continue;
-                }
-
-                CityPieces.Model(dumpsters, Kit.CityKitRoads, "dumpster", position, west ? 0f : 180f, 6f, true);
-            }
-
-            // Carros estacionados, rente ao meio-fio, no sentido do trânsito (mão direita).
-            for (int i = 0; i < StreetCount; i++)
-            {
-                for (int j = 0; j < BlockCount; j++)
-                {
-                    ParkAlong(cars, random, avoid, parked, true, i, j);
-                }
-            }
-
-            for (int j = 0; j < StreetCount; j++)
-            {
-                for (int i = 0; i < BlockCount; i++)
-                {
-                    ParkAlong(cars, random, avoid, parked, false, j, i);
-                }
-            }
-        }
-
-        private static void ParkAlong(Transform parent, System.Random random, List<Vector3> avoid, List<Vector3> parked, bool vertical, int street, int segment)
-        {
-            int count = random.Next(0, 3);
-            float halfWidth = vertical ? _hwx[street] : _hwz[street];
-
-            for (int n = 0; n < count; n++)
-            {
-                float t = 0.2f + 0.6f * (float)random.NextDouble();
-                int side = random.Next(2) == 0 ? 1 : -1;
-                string model = ParkedCarModels[random.Next(ParkedCarModels.Length)];
-                Vector3 position;
-                float yaw;
-
-                if (vertical)
-                {
-                    position = new Vector3(_cx[street] + side * ParkOffset(halfWidth), 0.02f, Mathf.Lerp(_cz[segment], _cz[segment + 1], t));
-                    yaw = side > 0 ? 0f : 180f;
-                }
-                else
-                {
-                    position = new Vector3(Mathf.Lerp(_cx[segment], _cx[segment + 1], t), 0.02f, _cz[street] + side * ParkOffset(halfWidth));
-                    yaw = side < 0 ? 90f : 270f;
-                }
-
-                if (NearAny(position, avoid, 16f) || NearAny(position, parked, 8f))
-                {
-                    continue;
-                }
-
-                parked.Add(position);
-                CityPieces.Car(parent, model, position, yaw + ((float)random.NextDouble() - 0.5f) * 4f);
-            }
-        }
-
-        /// <summary>Oito carros do kit dando voltas em quarteirões (sentido horário), a 7 a 9 m/s, cinemáticos.</summary>
-        private static void BuildTraffic(Transform parent, Transform player)
-        {
-            var blocks = new[]
-            {
-                new Vector2Int(3, 3), new Vector2Int(4, 3), new Vector2Int(3, 4), new Vector2Int(4, 4),
-                new Vector2Int(3, 5), new Vector2Int(4, 5), new Vector2Int(2, 4), new Vector2Int(5, 4),
-            };
-            string[] models = { "taxi", "sedan", "van", "suv", "hatchback-sports", "delivery", "sedan", "truck" };
-            float[] speeds = { 8f, 7f, 9f, 8f, 7.5f, 8.5f, 7f, 9f };
-            float[] starts = { 0.1f, 0.6f, 0.35f, 0.85f, 0.2f, 0.7f, 0.5f, 0.05f };
-
-            for (int k = 0; k < blocks.Length; k++)
-            {
-                int i = blocks[k].x;
-                int j = blocks[k].y;
-                float west = LaneOffset(i == AvenueIndex);
-                float east = LaneOffset(i + 1 == AvenueIndex);
-                var corners = new[]
-                {
-                    new Vector3(_cx[i] + west, 0.02f, _cz[j] + 2f),
-                    new Vector3(_cx[i] + west, 0.02f, _cz[j + 1] - 2f),
-                    new Vector3(_cx[i + 1] - east, 0.02f, _cz[j + 1] - 2f),
-                    new Vector3(_cx[i + 1] - east, 0.02f, _cz[j] + 2f),
-                };
-
-                // Posição inicial: fração do perímetro.
-                float perimeter = 0f;
-
-                for (int c = 0; c < 4; c++)
-                {
-                    perimeter += Vector3.Distance(corners[c], corners[(c + 1) % 4]);
-                }
-
-                float distance = starts[k] * perimeter;
-                int segment = 0;
-
-                while (distance > Vector3.Distance(corners[segment], corners[(segment + 1) % 4]))
-                {
-                    distance -= Vector3.Distance(corners[segment], corners[(segment + 1) % 4]);
-                    segment++;
-                }
-
-                Vector3 a = corners[segment];
-                Vector3 b = corners[(segment + 1) % 4];
-                Vector3 direction = (b - a).normalized;
-                Vector3 start = a + direction * distance;
-                float yaw = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
-
-                var car = new GameObject("Transito_" + models[k] + "_" + k);
-                car.transform.SetParent(parent, false);
-                car.transform.SetPositionAndRotation(start, Quaternion.Euler(0f, yaw, 0f));
-                Bounds bounds = CityPieces.ModelBounds(Kit.CarKit, models[k]);
-                var box = car.AddComponent<BoxCollider>();
-                box.center = bounds.center * CityPieces.CarScale;
-                box.size = bounds.size * CityPieces.CarScale;
-                car.AddComponent<Rigidbody>().isKinematic = true;
-                CityPieces.Model(car.transform, Kit.CarKit, models[k], start, yaw, CityPieces.CarScale).name = "Carro";
-                car.AddComponent<TrafficLoop>().Configure(corners, speeds[k], player, segment);
-            }
-        }
-
         // ---------- Luz, câmeras, rota ----------
-
-        private static void BuildLighting(Materials m, out Light sun)
-        {
-            var lightObject = new GameObject("Sol");
-            lightObject.transform.rotation = Quaternion.Euler(52f, -30f, 0f);
-            sun = lightObject.AddComponent<Light>();
-            sun.type = LightType.Directional;
-            sun.color = new Color(1f, 0.96f, 0.88f);
-            sun.intensity = 1.2f;
-            sun.shadows = LightShadows.Hard;
-
-            RenderSettings.ambientMode = AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.55f, 0.58f, 0.64f);
-            RenderSettings.fog = true;
-            RenderSettings.fogMode = FogMode.Linear;
-            RenderSettings.fogStartDistance = 260f;
-            RenderSettings.fogEndDistance = 650f;
-            RenderSettings.fogColor = new Color(0.55f, 0.75f, 0.95f);
-            RenderSettings.sun = sun;
-        }
 
         private static Camera BuildMainCamera(ArcadeBikeController bike)
         {
             var go = new GameObject("Camera");
             go.tag = "MainCamera";
             var camera = go.AddComponent<Camera>();
-            camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.55f, 0.75f, 0.95f);
+            camera.clearFlags = CameraClearFlags.Skybox;
             camera.nearClipPlane = 0.3f;
-            camera.farClipPlane = 800f;
+            camera.farClipPlane = 600f;
             camera.fieldOfView = 62f;
             go.AddComponent<AudioListener>();
             go.AddComponent<FollowCamera>().Configure(bike);
 
             var data = camera.GetUniversalAdditionalCameraData();
-            data.renderPostProcessing = false;
+            data.renderPostProcessing = true;
 
             go.transform.position = bike.transform.position + new Vector3(0f, 3.6f, -7.5f);
 
@@ -1190,7 +544,7 @@ namespace Entregador.Editor
             camera.depth = -10f;
             var data = camera.GetUniversalAdditionalCameraData();
             data.renderShadows = false;
-            data.renderPostProcessing = false;
+            data.renderPostProcessing = true;
 
             go.transform.position = bike.transform.position + Vector3.up * 150f;
             go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);

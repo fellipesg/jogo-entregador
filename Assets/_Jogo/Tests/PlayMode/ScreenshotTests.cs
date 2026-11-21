@@ -141,6 +141,33 @@ namespace Entregador.Game.Tests
             yield return PlaceOnRoute(residential, 0f);
             Debug.Log($"[Captura] residencial em {residential} yaw {Flow.Bike.Yaw}");
             Save(dir, "a_rua_residencial_gps.png", main);
+            ReportStats(dir, "a_rua_residencial_gps", main);
+
+            // (f) Rua com postes e fios: câmera baixa olhando um pouco para cima, ao longo da rua.
+            follow.enabled = false;
+            Vector3 poleStreet = ClearStreetSpot(6, 2f);
+            Flow.Bike.Teleport(new Vector3(poleStreet.x, 0.1f, poleStreet.z), 0f);
+            yield return null;
+            main.transform.position = poleStreet + new Vector3(-1f, 1.9f, -4f);
+            main.transform.rotation = Quaternion.Euler(-9f, 0f, 0f);
+            yield return null;
+            Save(dir, "f_postes_e_fios.png", main);
+            follow.enabled = true;
+
+            // (d) Close-up da Borracharia 24h.
+            GameObject borracharia = GameObject.Find("Borracharia");
+            Assert.IsNotNull(borracharia, "A Borracharia 24h não foi gerada.");
+            follow.enabled = false;
+            Vector3 shop = borracharia.transform.position;
+            Vector3 shopForward = borracharia.transform.forward;
+            Vector3 shopRight = Vector3.Cross(Vector3.up, shopForward);
+            Flow.Bike.Teleport(new Vector3(shop.x, 0.1f, shop.z) + shopForward * 8f, 0f);
+            yield return null;
+            main.transform.position = shop + shopForward * 6.5f - shopRight * 4.5f + Vector3.up * 0.8f;
+            main.transform.rotation = Quaternion.LookRotation(shop - main.transform.position + Vector3.up * 0.6f, Vector3.up);
+            yield return null;
+            Save(dir, "d_borracharia.png", main);
+            follow.enabled = true;
 
             // (b) O largo com os restaurantes (visto da moto, dentro da praça, olhando para dois deles).
             Place[] restaurants = Flow.Map.Restaurants;
@@ -185,6 +212,7 @@ namespace Entregador.Game.Tests
             follow.Snap();
             yield return null;
             Save(dir, "c_avenida_transito.png", main);
+            ReportStats(dir, "c_avenida_transito", main);
 
             // (d) Visão de cima do mapa todo, com a rota até o cliente.
             Flow.Bike.SetLocked(false);
@@ -214,7 +242,7 @@ namespace Entregador.Game.Tests
             RenderSettings.fog = false;
             main.enabled = false;
             yield return null;
-            Save(dir, "d_mapa_visto_de_cima.png", overview, false);
+            Save(dir, "g_mapa_visto_de_cima.png", overview, false);
             RenderSettings.fog = fog;
             main.enabled = true;
             lineRenderer.widthMultiplier = 1f;
@@ -242,6 +270,17 @@ namespace Entregador.Game.Tests
             yield return PlaceFacing(Node(4, 3) + new Vector3(8f, 0f, 30f), Node(4, 3) + new Vector3(8f, 0f, 80f));
             yield return new WaitForSeconds(0.5f);
             Save(dir, "e_chuva_avenida.png", main);
+        }
+
+        /// <summary>Grava batches, SetPass e triângulos do último quadro renderizado (UnityStats, só no Editor).</summary>
+        private static void ReportStats(string dir, string label, Camera camera)
+        {
+#if UNITY_EDITOR
+            camera.Render();
+            string line = $"{label}: drawCalls={UnityEditor.UnityStats.drawCalls} setPass={UnityEditor.UnityStats.setPassCalls} tris={UnityEditor.UnityStats.triangles} verts={UnityEditor.UnityStats.vertices} shadowCasters={UnityEditor.UnityStats.shadowCasters}";
+            Debug.Log("[Stats] " + line);
+            File.AppendAllText(Path.Combine(dir, "stats.txt"), line + "\n");
+#endif
         }
 
         private static void Save(string dir, string name, Camera camera, bool withUi = true)

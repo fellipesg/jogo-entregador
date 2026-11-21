@@ -18,7 +18,8 @@ Assets/_Jogo/
   Settings/           Asset URP mobile, renderer e material de física da moto
   Tests/EditMode/     Testes NUnit das regras
   Tests/PlayMode/     Testes da cena (moto, corrida, semana, tempo das corridas, GPS, meio-fio, chuva, trânsito, reclamação do cliente, conta bloqueada, oferta que expira) e capturas de tela
-Assets/ThirdParty/Kenney/   Modelos CC0 do Kenney (só o que é usado) com a License.txt de cada kit
+Assets/ThirdParty/Kenney/   Modelos CC0 do Kenney (só os carros, semáforos antigos não são mais usados) com a License.txt de cada kit
+Assets/ThirdParty/PolyHaven/ Texturas PBR e HDRIs CC0 do Poly Haven (ver "Arte fotográfica" abaixo)
 Assets/TextMesh Pro/        TMP Essential Resources (fonte LiberationSans SDF, OFL) importados do pacote com.unity.ugui
 Packages/             Dependências (URP, Input System, uGUI, test-framework)
 ```
@@ -57,12 +58,54 @@ Os modelos vêm dos kits do [Kenney](https://www.kenney.nl) (licença Creative C
 
 | Kit | Uso |
 | --- | --- |
-| Roads | tiles de rua (`road-straight`, `road-crossroad`), postes, semáforos nos cruzamentos da avenida, placas, caçambas, cones nos buracos |
-| Commercial | prédios do quarteirão em volta da avenida e do largo (`building-a..n`, poucos arranha-céus), restaurantes (`building-k` + `detail-awning-wide` + guarda-sóis) |
-| Suburban | casas dos quarteirões residenciais (`building-type-a..u`) e árvores de rua/praça |
+| Roads | só os cones de obra nos buracos (ruas, postes, semáforos, placas e caçambas agora são geradas por código) |
+| Commercial | não é mais usado (prédios gerados por `CityBuildings`) |
+| Suburban | não é mais usado (sobrados e árvores gerados por código) |
 | Car | carros estacionados, o trânsito (`TrafficLoop`) e as rodas (`wheel-default`) da moto |
 
 Não existe moto nos kits: a moto é feita de primitivas em `BikeFactory` (corpo fino, tanque, guidão, farol, piloto com capacete, baú vermelho com tampa) com as rodas do Car Kit.
+
+## Arte semi-realista (Poly Haven, CC0)
+
+A direção de arte é semi-realista: texturas fotográficas PBR, proporções de bairro paulistano, céu HDRI e pós-processamento. As texturas e os céus vêm do [Poly Haven](https://polyhaven.com) (licença CC0, em `Assets/ThirdParty/PolyHaven/LICENSE.txt`): asphalt_02, concrete_pavement, hexagonal_concrete_paving, concrete_floor_02, painted_plaster_wall, white_plaster_02, beige_wall_001, cracked_concrete_wall, concrete_wall_003, grey_plaster, red_brick_03, brick_4, clay_roof_tiles_02, corrugated_iron, rusty_metal_02, green_metal_rust, sparse_grass e os HDRIs kloofendal_48d_partly_cloudy, kloofendal_overcast e belfast_sunset. Os carros continuam sendo do Kenney (pintados em cores realistas por `CarPaint`).
+
+### Pipeline de materiais
+
+- `PbrMaterials` (menu `Jogo > Processar texturas PBR`): converte as normais EXR em PNG (e apaga os EXR), gera por conjunto o `<nome>_ms.png` (R = metal, G = AO, A = suavidade = 1 - rugosidade; o URP Lit usa a mesma textura em `_MetallicGlossMap` e `_OcclusionMap`) e a variante `_ms_wet.png` (suavidade alta) para asfalto, calçada e piso do largo. Importa tudo para celular (máx. 1024; 2048 para asfalto e calçada; ASTC 6x6 em Android/iOS; normais como Normal Map). Os `*_ao_*.jpg` e `*_arm_*.jpg` originais ficam (o ARM é a fonte do mapa de máscara).
+- UVs em metros do mundo: `MeshBatch` gera os UVs de cada face em metros (u = posição · direção da face). O tiling do material é `1 / metros por repetição` (tabela `PbrMaterials.Sets`: reboco 2,5 m, tijolo 2 m, asfalto 6 m, calçada 3 m, telha 2 m). Nada é esticado, em qualquer tamanho de prédio.
+- Poucos materiais: reboco são 12 cores muted x 2 texturas (`CityStyle`), mais metal, vidro, tintas e toldos; a cidade inteira usa dezenas de materiais, nunca um por prédio.
+
+### Geração da cidade
+
+Tudo vira malhas fundidas, uma por quarteirão (`MeshBatch`, um submesh por material), salvas em binário em `Assets/_Jogo/Scenes/SantoAmaro_MalhasNN.asset` (arquivos de ~25 malhas; são GERADOS, mas a cena os referencia por GUID: faça commit deles junto com a cena ou regere). Peças:
+
+- `CityBuildings`: o único gerador de prédios (determinístico por semente): sobrados (muro com portões, laje com parapeito ou telhado cerâmico/fibrocimento, andar de tijolo aparente, grades, caixa d'água, ar-condicionado), comércio com sobreloja (porta de enrolar aberta/fechada, vitrine, toldo e letreiro em TextMeshPro), prédios médios de 5 a 12 andares (janelas e varandas em geometria, casa de máquinas, caixa d'água) e os 4 restaurantes (porta aberta, toldo na cor, letreiro, mesas na calçada). Quarteirões longe do largo usam "detalhe reduzido" (`BuildingContext.Lite`) para caber no orçamento de triângulos.
+- `CityBuilder.Streets/Blocks/Furniture` (partials do CityBuilder): asfalto, faixas, faixas de pedestre, corredor de ônibus, lombadas (visuais), bueiros, guia e calçada, buracos (remendo escuro irregular), postes de concreto com fios em catenária, luminárias, lixeiras laranja, pontos de ônibus, árvores, semáforos, placas de PARE, caçambas.
+- Colliders: um por quarteirão (miolo), laje + rampas de calçada, cápsulas finas nos postes; nada por detalhe.
+
+### Luz e atmosfera
+
+`LightingSetup` (editor) cria sol, Volume global, ReflectionProbe e o componente `WeatherLook` (runtime, `Assets/_Jogo/Scripts/Game/WeatherLook.cs`), que o `GameFlow` chama a cada dia:
+
+| Visual | Céu | Sol | Pós-processamento |
+| --- | --- | --- | --- |
+| Sol | HDRI partly cloudy; a direção do sol é lida do próprio HDRI | quente, sombra suave (1 cascata, 60 m) | ACES, exposição -0,35, saturação +8, bloco quente, bloom 0,22, vinheta 0,2 |
+| Chuva | HDRI overcast | fraco, SEM sombras | ACES, dessaturado, vinheta 0,28; asfalto/calçada trocam para a versão molhada (mais escura e lisa); chuva de partículas mantida |
+| Tarde | HDRI belfast sunset | laranja e baixo | ACES, saturação +12 (disponível: `WeatherLook.Apply(LookKind.Sunset)`, o jogo ainda não usa) |
+
+Ambiente vem do skybox; neblina com a cor do horizonte do HDRI. SSAO existe como renderer feature DESLIGADO (`WeatherLook.UseSsao`, padrão false). URP: HDR ligado, MSAA 2x, sombras suaves de qualidade baixa.
+
+### Regerar tudo
+
+```
+U=/Applications/Unity/Hub/Editor/6000.6.10f1/Unity.app/Contents/MacOS/Unity
+$U -batchmode -nographics -quit -projectPath "$(pwd)" -executeMethod Entregador.Editor.PbrMaterials.ProcessFromCommandLine   # só se mudar texturas
+$U -batchmode -nographics -quit -projectPath "$(pwd)" -executeMethod Entregador.Editor.CityBuilder.BuildFromCommandLine     # cena + malhas
+```
+
+As malhas `SantoAmaro_Malhas*.asset` (~140 MB) ficam fora do git. Depois de clonar, rode o `BuildFromCommandLine` acima antes de abrir a cena.
+
+Capturas: o `ScreenshotTests` (PlayMode, sem `-nographics`, `JOGO_SHOTS_DIR`) grava os PNGs e `stats.txt` com drawCalls, SetPass e triângulos (UnityStats) da vista de direção.
 
 ### Convenção de escala
 

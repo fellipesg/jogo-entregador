@@ -82,7 +82,7 @@ namespace Entregador.Editor
         /// Instancia um modelo do Kenney (cópia solta, sem vínculo com o FBX), aplica o material único do kit
         /// e, se pedido, um BoxCollider do tamanho medido. A posição é a da base do modelo.
         /// </summary>
-        public static GameObject Model(Transform parent, Kit kit, string model, Vector3 position, float yaw, Vector3 scale, bool collider = false)
+        public static GameObject Model(Transform parent, Kit kit, string model, Vector3 position, float yaw, Vector3 scale, bool collider = false, Material overrideMaterial = null)
         {
             GameObject go = Object.Instantiate(LoadAsset(kit, model));
             go.name = model;
@@ -90,7 +90,7 @@ namespace Entregador.Editor
             go.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
             go.transform.localScale = scale;
 
-            Material material = CityMaterials.Kenney(kit.ToString());
+            Material material = overrideMaterial != null ? overrideMaterial : CityMaterials.Kenney(kit.ToString());
 
             foreach (Renderer renderer in go.GetComponentsInChildren<Renderer>())
             {
@@ -112,8 +112,8 @@ namespace Entregador.Editor
             Model(parent, kit, model, position, yaw, Vector3.one * scale, collider);
 
         /// <summary>Um carro do kit de carros, em pé no chão, com collider sólido.</summary>
-        public static GameObject Car(Transform parent, string model, Vector3 position, float yaw, bool collider = true) =>
-            Model(parent, Kit.CarKit, model, position, yaw, CarScale, collider);
+        public static GameObject Car(Transform parent, string model, Vector3 position, float yaw, bool collider = true, int paint = 0) =>
+            Model(parent, Kit.CarKit, model, position, yaw, Vector3.one * CarScale, collider, CarPaint.Get(model == "taxi" ? 0 : paint));
 
         /// <summary>Um tile de rua (quadrado de 1 unidade) esticado para width x length metros (length ao longo do eixo X do tile, onde correm as faixas); a espessura fica em 4 cm.</summary>
         public static GameObject RoadTile(Transform parent, string model, Vector3 center, float yaw, float width, float length) =>
