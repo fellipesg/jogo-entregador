@@ -46,3 +46,6 @@ crashlytics-build.properties
 
 # Malhas geradas pelo CityBuilder (~140 MB): regerar com BuildFromCommandLine depois de clonar
 Assets/_Jogo/Scenes/SantoAmaro_Malhas*
+
+# Ferramentas locais
+.claude/
