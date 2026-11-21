@@ -11,7 +11,7 @@ namespace Entregador.Game
     public sealed class ArcadeBikeController : MonoBehaviour
     {
         [Header("Movimento")]
-        [SerializeField] private float _topSpeed = 15f;
+        [SerializeField] private float _topSpeed = 13f;
         [SerializeField] private float _acceleration = 8f;
         [SerializeField] private float _brakeDeceleration = 22f;
         [SerializeField] private float _coastDeceleration = 3f;

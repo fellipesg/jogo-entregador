@@ -12,7 +12,9 @@ namespace Entregador.Game
         [SerializeField] private RoadGraph _graph;
         [SerializeField] private LineRenderer _line;
         [SerializeField] private ArcadeBikeController _bike;
-        [SerializeField] private float _lift = 0.35f;
+        [SerializeField] private float _lift = 0.14f;
+        [Tooltip("Metros da linha, a partir da moto, que não são desenhados (não cobrem a visão da câmera).")]
+        [SerializeField] private float _hideFirstMeters = 7f;
         [SerializeField] private float _offRouteDistance = 14f;
 
         private readonly List<Vector3> _route = new List<Vector3>();
@@ -136,6 +138,8 @@ namespace Entregador.Game
             return Mathf.Max(0, best - 1);
         }
 
+        private readonly List<Vector3> _drawn = new List<Vector3>();
+
         private void Redraw()
         {
             if (_line == null)
@@ -143,11 +147,36 @@ namespace Entregador.Game
                 return;
             }
 
-            _line.positionCount = _route.Count;
+            // Pula os primeiros metros: a linha começa à frente da moto, como uma fita estreita no asfalto.
+            _drawn.Clear();
+            float toSkip = _hideFirstMeters;
 
-            for (int i = 0; i < _route.Count; i++)
+            for (int i = 0; i + 1 < _route.Count; i++)
             {
-                Vector3 p = _route[i];
+                Vector3 a = _route[i];
+                Vector3 b = _route[i + 1];
+                float length = Vector3.Distance(a, b);
+
+                if (_drawn.Count == 0)
+                {
+                    if (length <= toSkip)
+                    {
+                        toSkip -= length;
+
+                        continue;
+                    }
+
+                    _drawn.Add(Vector3.Lerp(a, b, toSkip / length));
+                }
+
+                _drawn.Add(b);
+            }
+
+            _line.positionCount = _drawn.Count < 2 ? 0 : _drawn.Count;
+
+            for (int i = 0; i < _line.positionCount; i++)
+            {
+                Vector3 p = _drawn[i];
                 _line.SetPosition(i, new Vector3(p.x, _lift, p.z));
             }
         }

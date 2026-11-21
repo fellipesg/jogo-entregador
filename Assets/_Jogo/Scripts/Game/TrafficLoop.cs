@@ -1,0 +1,116 @@
+using UnityEngine;
+
+namespace Entregador.Game
+{
+    /// <summary>
+    /// Carro de trânsito: dá voltas num retângulo de pontos (em volta de um quarteirão) numa velocidade fixa.
+    /// É cinemático; a moto que bate nele leva dano e derruba comida pelo mecanismo normal de colisão
+    /// (ArcadeBikeController.OnCollisionEnter). Para quando a moto está logo à frente.
+    /// </summary>
+    [RequireComponent(typeof(Rigidbody))]
+    public sealed class TrafficLoop : MonoBehaviour
+    {
+        [SerializeField] private Vector3[] _waypoints;
+        [SerializeField] private float _speed = 8f;
+        [SerializeField] private float _turnRate = 130f;
+        [SerializeField] private float _acceleration = 12f;
+        [SerializeField] private float _stopDistance = 11f;
+        [SerializeField] private float _stopHalfAngle = 35f;
+        [SerializeField] private float _reachDistance = 6f;
+        [SerializeField] private Transform _player;
+
+        private Rigidbody _body;
+        [SerializeField] private int _next;
+        private float _yaw;
+        private float _currentSpeed;
+
+        /// <summary>Velocidade atual em m/s (0 quando parado por causa da moto).</summary>
+        public float CurrentSpeed => _currentSpeed;
+
+        public Vector3[] Waypoints => _waypoints;
+
+        public int NextIndex => _next;
+
+        public bool Stopped { get; private set; }
+
+        public float CruiseSpeed => _speed;
+
+        /// <summary>Distância (m) até o próximo ponto da volta; os testes usam para evitar esquinas.</summary>
+        public float DistanceToNextWaypoint => _waypoints == null || _waypoints.Length == 0 ? 0f : Vector3.Distance(transform.position, _waypoints[_next]);
+
+        public void Configure(Vector3[] waypoints, float speed, Transform player, int startIndex)
+        {
+            _waypoints = waypoints;
+            _speed = speed;
+            _player = player;
+            _next = waypoints.Length == 0 ? 0 : (startIndex + 1) % waypoints.Length;
+        }
+
+        private void Awake()
+        {
+            _body = GetComponent<Rigidbody>();
+            _body.isKinematic = true;
+            _body.interpolation = RigidbodyInterpolation.Interpolate;
+            _yaw = transform.eulerAngles.y;
+            _currentSpeed = _speed;
+        }
+
+        private void FixedUpdate()
+        {
+            if (_waypoints == null || _waypoints.Length < 2)
+            {
+                return;
+            }
+
+            float dt = Time.fixedDeltaTime;
+            Vector3 position = _body.position;
+            Vector3 toTarget = _waypoints[_next] - position;
+            toTarget.y = 0f;
+
+            // Chegou (ou já passou do ponto): segue para o próximo. O raio de chegada é maior que o raio de curva
+            // (velocidade / taxa de giro), senão o carro ficaria dando voltas em torno do ponto.
+            Vector3 heading = Quaternion.Euler(0f, _yaw, 0f) * Vector3.forward;
+
+            if (toTarget.magnitude < _reachDistance || (Vector3.Dot(heading, toTarget) < 0f && toTarget.magnitude < 14f))
+            {
+                _next = (_next + 1) % _waypoints.Length;
+                toTarget = _waypoints[_next] - position;
+                toTarget.y = 0f;
+            }
+
+            float desiredYaw = Mathf.Atan2(toTarget.x, toTarget.z) * Mathf.Rad2Deg;
+            _yaw = Mathf.MoveTowardsAngle(_yaw, desiredYaw, _turnRate * dt);
+
+            Vector3 forward = Quaternion.Euler(0f, _yaw, 0f) * Vector3.forward;
+            Stopped = PlayerAhead(position, forward);
+            _currentSpeed = Mathf.MoveTowards(_currentSpeed, Stopped ? 0f : _speed, _acceleration * dt);
+
+            _body.MovePosition(position + forward * (_currentSpeed * dt));
+            _body.MoveRotation(Quaternion.Euler(0f, _yaw, 0f));
+        }
+
+        private bool PlayerAhead(Vector3 position, Vector3 forward)
+        {
+            if (_player == null)
+            {
+                return false;
+            }
+
+            Vector3 offset = _player.position - position;
+            offset.y = 0f;
+            float distance = offset.magnitude;
+
+            if (distance > _stopDistance)
+            {
+                return false;
+            }
+
+            if (distance < 3.5f)
+            {
+                return true;
+            }
+
+            return Vector3.Angle(forward, offset) < _stopHalfAngle;
+        }
+    }
+}

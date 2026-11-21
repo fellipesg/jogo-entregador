@@ -42,6 +42,7 @@ namespace Entregador.Game
         [SerializeField] private Light _sun;
         [SerializeField] private Camera _mainCamera;
         [SerializeField] private int _seed;
+        [SerializeField] private RainEffect _rain;
 
         private IGameRandom _random;
         private Incident _runIncident;
@@ -98,6 +99,12 @@ namespace Entregador.Game
             _mainCamera = mainCamera;
         }
 
+        /// <summary>Liga o efeito de chuva (partículas que seguem a câmera) aos dias de chuva.</summary>
+        public void AttachRain(RainEffect rain)
+        {
+            _rain = rain;
+        }
+
         private void Awake()
         {
             AdService = GetComponent<FakeAdService>();
@@ -111,10 +118,10 @@ namespace Entregador.Game
 
         // ---------- Semana ----------
 
-        /// <summary>Começa uma semana do zero. Seed 0 usa o relógio.</summary>
-        public void NewWeek(int seed = 0)
+        /// <summary>Começa uma semana do zero. Seed 0 usa o relógio. Os testes passam a própria fonte de sorte.</summary>
+        public void NewWeek(int seed = 0, IGameRandom random = null)
         {
-            _random = new SeededRandom(seed != 0 ? seed : Environment.TickCount);
+            _random = random ?? new SeededRandom(seed != 0 ? seed : Environment.TickCount);
             Session = new GameSession(_random);
             WeekReport = null;
             CurrentOrder = null;
@@ -719,6 +726,13 @@ namespace Entregador.Game
             }
 
             RenderSettings.fogColor = sky;
+            RenderSettings.fogStartDistance = rain ? 90f : 260f;
+            RenderSettings.fogEndDistance = rain ? 380f : 650f;
+
+            if (_rain != null)
+            {
+                _rain.SetRaining(rain);
+            }
 
             if (_sun != null)
             {

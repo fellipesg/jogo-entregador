@@ -68,6 +68,22 @@ namespace Entregador.Game
 
             // Entre os restaurantes que acertam a distância quase tão bem quanto o melhor, sorteia um.
             var candidates = best.FindAll(c => c.error <= minError + 40f);
+
+            // Prefere um restaurante que não esteja colado na moto; se nenhum acerta a distância assim, relaxa um pouco a tolerância.
+            if (!candidates.Exists(c => graph.RouteLength(bikePosition, c.restaurant.Position) >= tuning.MinPickupMeters))
+            {
+                var relaxed = best.FindAll(c => c.error <= minError + 100f && graph.RouteLength(bikePosition, c.restaurant.Position) >= tuning.MinPickupMeters);
+
+                if (relaxed.Count > 0)
+                {
+                    candidates = relaxed;
+                }
+            }
+            else
+            {
+                candidates = candidates.FindAll(c => graph.RouteLength(bikePosition, c.restaurant.Position) >= tuning.MinPickupMeters);
+            }
+
             var pick = candidates[random.Range(0, candidates.Count)];
 
             return new RunPlan

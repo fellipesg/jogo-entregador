@@ -35,6 +35,32 @@ namespace Entregador.Editor
             return material;
         }
 
+        /// <summary>
+        /// Material único (URP Lit) de um kit do Kenney: todos os modelos de um kit usam só o colormap.png dele.
+        /// Os FBX são importados sem materiais (ver KenneyImportSettings); o CityPieces aplica este aqui.
+        /// </summary>
+        public static Material Kenney(string kitFolder)
+        {
+            string path = $"{Folder}/Kenney_{kitFolder}.mat";
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+
+            if (material == null)
+            {
+                Directory.CreateDirectory(Folder);
+                material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                AssetDatabase.CreateAsset(material, path);
+            }
+
+            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>($"{KenneyImportSettings.Folder}{kitFolder}/Models/Textures/colormap.png");
+            material.SetTexture("_BaseMap", texture);
+            material.SetColor("_BaseColor", Color.white);
+            material.SetFloat("_Smoothness", 0f);
+            material.SetFloat("_Metallic", 0f);
+            EditorUtility.SetDirty(material);
+
+            return material;
+        }
+
         private static Material LoadOrCreate(string name, string shaderName)
         {
             Directory.CreateDirectory(Folder);

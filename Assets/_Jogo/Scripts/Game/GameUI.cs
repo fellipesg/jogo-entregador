@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -30,31 +31,30 @@ namespace Entregador.Game
         private static readonly Color ButtonColor = new Color(0.96f, 0.55f, 0.1f, 1f);
         private static readonly Color HudColor = new Color(0f, 0f, 0f, 0.45f);
 
-        private Font _font;
         private Canvas _canvas;
         private BikeInput _input;
 
         private GameObject _hudRoot;
-        private Text _balanceText;
-        private Text _dayText;
-        private Text _targetText;
-        private Text _timeText;
-        private Text _speedText;
+        private TMP_Text _balanceText;
+        private TMP_Text _dayText;
+        private TMP_Text _targetText;
+        private TMP_Text _timeText;
+        private TMP_Text _speedText;
         private RectTransform _foodFill;
         private Image _foodFillImage;
-        private Text _foodLabel;
+        private TMP_Text _foodLabel;
         private Button _skipButton;
         private GameObject _controlsRoot;
         private RawImage _minimapImage;
 
         private GameObject _modalRoot;
-        private Text _modalTitle;
-        private Text _modalBody;
+        private TMP_Text _modalTitle;
+        private TMP_Text _modalBody;
         private readonly List<Button> _modalButtons = new List<Button>();
-        private readonly List<Text> _modalButtonLabels = new List<Text>();
+        private readonly List<TMP_Text> _modalButtonLabels = new List<TMP_Text>();
         private readonly List<string> _currentLabels = new List<string>();
 
-        private Text _toastText;
+        private TMP_Text _toastText;
         private float _toastUntil;
 
         public Canvas Canvas => _canvas;
@@ -74,7 +74,6 @@ namespace Entregador.Game
         public void Build(BikeInput input, Texture minimap, Action onSkip)
         {
             _input = input;
-            _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
             EnsureEventSystem();
 
@@ -117,13 +116,13 @@ namespace Entregador.Game
 
             // Saldo e dia, canto superior esquerdo.
             RectTransform topLeft = NewPanel("SaldoDia", _hudRoot.transform, HudColor, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(16f, -16f), new Vector2(300f, 84f));
-            _balanceText = NewText("Saldo", topLeft, 34, TextAnchor.UpperLeft, Color.white, new Vector2(14f, -6f), new Vector2(280f, 44f));
-            _dayText = NewText("Dia", topLeft, 22, TextAnchor.UpperLeft, new Color(0.85f, 0.9f, 1f), new Vector2(14f, -50f), new Vector2(280f, 30f));
+            _balanceText = NewText("Saldo", topLeft, 34, TextAlignmentOptions.TopLeft, Color.white, new Vector2(14f, -6f), new Vector2(280f, 44f));
+            _dayText = NewText("Dia", topLeft, 22, TextAlignmentOptions.TopLeft, new Color(0.85f, 0.9f, 1f), new Vector2(14f, -50f), new Vector2(280f, 30f));
 
             // Alvo e tempo, topo central.
             RectTransform topCenter = NewPanel("AlvoTempo", _hudRoot.transform, HudColor, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -16f), new Vector2(520f, 84f));
-            _targetText = NewText("Alvo", topCenter, 26, TextAnchor.UpperCenter, Color.white, new Vector2(0f, -6f), new Vector2(500f, 36f));
-            _timeText = NewText("Tempo", topCenter, 24, TextAnchor.UpperCenter, new Color(0.85f, 0.9f, 1f), new Vector2(0f, -46f), new Vector2(500f, 32f));
+            _targetText = NewText("Alvo", topCenter, 26, TextAlignmentOptions.Top, Color.white, new Vector2(0f, -6f), new Vector2(500f, 36f));
+            _timeText = NewText("Tempo", topCenter, 24, TextAlignmentOptions.Top, new Color(0.85f, 0.9f, 1f), new Vector2(0f, -46f), new Vector2(500f, 32f));
 
             // Minimapa e botão de pular, canto superior direito.
             RectTransform mapFrame = NewPanel("MinimapaMoldura", _hudRoot.transform, new Color(1f, 1f, 1f, 0.8f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -16f), new Vector2(196f, 196f));
@@ -142,7 +141,7 @@ namespace Entregador.Game
 
             // Velocímetro e comida, base central.
             RectTransform bottom = NewPanel("Painel", _hudRoot.transform, HudColor, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 16f), new Vector2(280f, 96f));
-            _speedText = NewText("Velocidade", bottom, 40, TextAnchor.UpperCenter, Color.white, new Vector2(0f, -4f), new Vector2(260f, 50f));
+            _speedText = NewText("Velocidade", bottom, 40, TextAlignmentOptions.Top, Color.white, new Vector2(0f, -4f), new Vector2(260f, 50f));
             RectTransform foodBack = NewPanel("ComidaFundo", bottom, new Color(1f, 1f, 1f, 0.2f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(240f, 18f));
             var fillObject = new GameObject("ComidaBarra", typeof(RectTransform), typeof(Image));
             fillObject.transform.SetParent(foodBack, false);
@@ -151,7 +150,7 @@ namespace Entregador.Game
             _foodFill.anchorMax = Vector2.one;
             _foodFill.offsetMin = _foodFill.offsetMax = Vector2.zero;
             _foodFillImage = fillObject.GetComponent<Image>();
-            _foodLabel = NewText("ComidaTexto", bottom, 16, TextAnchor.LowerCenter, Color.white, new Vector2(0f, 0f), new Vector2(240f, 24f));
+            _foodLabel = NewText("ComidaTexto", bottom, 16, TextAlignmentOptions.Bottom, Color.white, new Vector2(0f, 0f), new Vector2(240f, 24f));
             _foodLabel.rectTransform.anchorMin = _foodLabel.rectTransform.anchorMax = new Vector2(0.5f, 0f);
             _foodLabel.rectTransform.pivot = new Vector2(0.5f, 0f);
             _foodLabel.rectTransform.anchoredPosition = new Vector2(0f, 34f);
@@ -176,17 +175,17 @@ namespace Entregador.Game
             Color color = name == "Acelerar" ? new Color(0.2f, 0.75f, 0.35f, 0.7f) : name == "Frear" ? new Color(0.85f, 0.25f, 0.25f, 0.7f) : new Color(0.3f, 0.45f, 0.85f, 0.7f);
             RectTransform rect = NewPanel(name, _controlsRoot.transform, color, anchor, anchor, position, size);
             rect.pivot = anchor;
-            var labelObject = new GameObject("Texto", typeof(RectTransform), typeof(Text));
+            var labelObject = new GameObject("Texto", typeof(RectTransform), typeof(TextMeshProUGUI));
             labelObject.transform.SetParent(rect, false);
             Stretch(labelObject.GetComponent<RectTransform>());
-            var labelText = labelObject.GetComponent<Text>();
-            labelText.font = _font;
+            var labelText = labelObject.GetComponent<TextMeshProUGUI>();
             labelText.fontSize = name == "Esquerda" || name == "Direita" ? 80 : 28;
-            labelText.fontStyle = FontStyle.Bold;
-            labelText.alignment = TextAnchor.MiddleCenter;
+            labelText.fontStyle = FontStyles.Bold;
+            labelText.alignment = TextAlignmentOptions.Center;
             labelText.color = Color.white;
             labelText.text = label;
             labelText.raycastTarget = false;
+            labelText.richText = false;
             rect.GetComponent<Image>().raycastTarget = true;
             rect.gameObject.AddComponent<HoldButton>().Changed = changed;
         }
@@ -253,8 +252,8 @@ namespace Entregador.Game
             layout.childForceExpandWidth = true;
             panel.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-            _modalTitle = NewLayoutText("Titulo", panel, 40, FontStyle.Bold, ButtonColor, TextAnchor.MiddleLeft);
-            _modalBody = NewLayoutText("Corpo", panel, 26, FontStyle.Normal, Color.white, TextAnchor.UpperLeft);
+            _modalTitle = NewLayoutText("Titulo", panel, 40, FontStyles.Bold, ButtonColor, TextAlignmentOptions.Left);
+            _modalBody = NewLayoutText("Corpo", panel, 26, FontStyles.Normal, Color.white, TextAlignmentOptions.TopLeft);
 
             for (int i = 0; i < 4; i++)
             {
@@ -263,7 +262,7 @@ namespace Entregador.Game
                 element.minHeight = 64f;
                 element.preferredHeight = 64f;
                 _modalButtons.Add(button);
-                _modalButtonLabels.Add(button.GetComponentInChildren<Text>());
+                _modalButtonLabels.Add(button.GetComponentInChildren<TMP_Text>());
             }
         }
 
@@ -329,7 +328,7 @@ namespace Entregador.Game
         private void BuildToast(Transform parent)
         {
             RectTransform back = NewPanel("Aviso", parent, new Color(0f, 0f, 0f, 0.7f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 150f), new Vector2(640f, 56f));
-            _toastText = NewText("Texto", back, 28, TextAnchor.MiddleCenter, Color.white, Vector2.zero, new Vector2(620f, 50f));
+            _toastText = NewText("Texto", back, 28, TextAlignmentOptions.Center, Color.white, Vector2.zero, new Vector2(620f, 50f));
             _toastText.rectTransform.anchoredPosition = Vector2.zero;
             back.gameObject.SetActive(false);
         }
@@ -384,9 +383,9 @@ namespace Entregador.Game
             return rect;
         }
 
-        private Text NewText(string name, Transform parent, int size, TextAnchor anchor, Color color, Vector2 position, Vector2 boxSize)
+        private TMP_Text NewText(string name, Transform parent, int size, TextAlignmentOptions anchor, Color color, Vector2 position, Vector2 boxSize)
         {
-            var go = new GameObject(name, typeof(RectTransform), typeof(Text));
+            var go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
             go.transform.SetParent(parent, false);
             var rect = go.GetComponent<RectTransform>();
             rect.anchorMin = new Vector2(0f, 1f);
@@ -395,17 +394,17 @@ namespace Entregador.Game
             rect.anchoredPosition = position;
             rect.sizeDelta = boxSize;
 
-            var text = go.GetComponent<Text>();
-            text.font = _font;
+            var text = go.GetComponent<TextMeshProUGUI>();
             text.fontSize = size;
             text.alignment = anchor;
             text.color = color;
-            text.horizontalOverflow = HorizontalWrapMode.Wrap;
-            text.verticalOverflow = VerticalWrapMode.Overflow;
+            text.textWrappingMode = TextWrappingModes.Normal;
+            text.overflowMode = TextOverflowModes.Overflow;
+            text.richText = false;
             text.raycastTarget = false;
 
             // Texto centralizado usa o centro do painel como referência.
-            if (anchor == TextAnchor.UpperCenter || anchor == TextAnchor.MiddleCenter || anchor == TextAnchor.LowerCenter)
+            if (anchor == TextAlignmentOptions.Top || anchor == TextAlignmentOptions.Center || anchor == TextAlignmentOptions.Bottom)
             {
                 rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
                 rect.pivot = new Vector2(0.5f, 1f);
@@ -414,18 +413,18 @@ namespace Entregador.Game
             return text;
         }
 
-        private Text NewLayoutText(string name, Transform parent, int size, FontStyle style, Color color, TextAnchor anchor)
+        private TMP_Text NewLayoutText(string name, Transform parent, int size, FontStyles style, Color color, TextAlignmentOptions anchor)
         {
-            var go = new GameObject(name, typeof(RectTransform), typeof(Text));
+            var go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
             go.transform.SetParent(parent, false);
-            var text = go.GetComponent<Text>();
-            text.font = _font;
+            var text = go.GetComponent<TextMeshProUGUI>();
             text.fontSize = size;
             text.fontStyle = style;
             text.alignment = anchor;
             text.color = color;
-            text.horizontalOverflow = HorizontalWrapMode.Wrap;
-            text.verticalOverflow = VerticalWrapMode.Overflow;
+            text.textWrappingMode = TextWrappingModes.Normal;
+            text.overflowMode = TextOverflowModes.Overflow;
+            text.richText = false;
             text.raycastTarget = false;
 
             return text;
@@ -438,13 +437,12 @@ namespace Entregador.Game
             var button = rect.gameObject.AddComponent<Button>();
             button.targetGraphic = rect.GetComponent<Image>();
 
-            var textObject = new GameObject("Texto", typeof(RectTransform), typeof(Text));
+            var textObject = new GameObject("Texto", typeof(RectTransform), typeof(TextMeshProUGUI));
             textObject.transform.SetParent(rect, false);
             Stretch(textObject.GetComponent<RectTransform>());
-            var text = textObject.GetComponent<Text>();
-            text.font = _font;
+            var text = textObject.GetComponent<TextMeshProUGUI>();
             text.fontSize = fontSize;
-            text.alignment = TextAnchor.MiddleCenter;
+            text.alignment = TextAlignmentOptions.Center;
             text.color = Color.white;
             text.text = label;
             text.raycastTarget = false;
