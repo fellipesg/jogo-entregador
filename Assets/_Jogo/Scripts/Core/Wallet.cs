@@ -14,6 +14,9 @@ namespace Entregador.Core
         Conserto,
         Multa,
         Compra,
+        Entrada,
+        Parcela,
+        Patio,
     }
 
     public readonly struct LedgerEntry

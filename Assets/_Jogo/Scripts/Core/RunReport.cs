@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Entregador.Core
 {
@@ -19,8 +20,24 @@ namespace Entregador.Core
         /// <summary>Dano novo na moto, de 0 a 1.</summary>
         public double DamageAdded;
 
-        /// <summary>Multas de radar tomadas na corrida.</summary>
+        /// <summary>Multas fixas simples (legado): cada uma custa EconomyConfig.Fine, cobrada no fim da semana.</summary>
         public int Fines;
+
+        /// <summary>Infrações capturadas por radar na corrida. A multa chega dias depois (só para moto alugada).</summary>
+        public readonly List<Infracao> Capturas = new List<Infracao>();
+
+        /// <summary>Registra uma passagem por radar. Devolve false se a velocidade, com a tolerância, não gerou infração.</summary>
+        public bool AddRadar(double medidaKmh, double limiteKmh)
+        {
+            Infracao? infracao = CodigoTransito.ClassificarVelocidade(medidaKmh, limiteKmh);
+
+            if (infracao.HasValue)
+            {
+                Capturas.Add(infracao.Value);
+            }
+
+            return infracao.HasValue;
+        }
 
         /// <summary>O jogador fotografou a entrega na porta do cliente.</summary>
         public bool PhotoTaken;
