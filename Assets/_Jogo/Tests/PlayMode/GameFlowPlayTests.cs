@@ -26,12 +26,13 @@ namespace Entregador.Game.Tests
 
             Vector3 start = Flow.Bike.Position;
             input.SetVirtual(0f, 1f, 0f);
-            yield return new WaitForSeconds(1f);
+            yield return new WaitForSeconds(2f);
             input.SetVirtual(0f, 0f, 0f);
 
+            // Moto de verdade (Titã 160: 0 a 60 km/h em uns 6 s): em 2 s anda uns 5 m e chega perto de 30 km/h.
             float forward = Vector3.Dot(Flow.Bike.Position - start, Heading(Flow.Map.BikeSpawnYaw));
             Assert.Greater(forward, 3f, "A moto deveria andar para frente com o acelerador apertado.");
-            Assert.Greater(Flow.Bike.ForwardSpeed, 3f);
+            Assert.Greater(Flow.Bike.ForwardSpeed, 5f);
             Assert.Less(Flow.Bike.Position.y, 1f, "A moto deveria ficar no chão.");
         }
 

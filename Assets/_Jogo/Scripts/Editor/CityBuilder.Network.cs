@@ -35,6 +35,9 @@ namespace Entregador.Editor
             public bool Reverse;
             public float LaneWidth;
 
+            /// <summary>Limite de velocidade em km/h (tag maxspeed do OSM; 0 se não há).</summary>
+            public int MaxSpeed;
+
             /// <summary>Meia-largura das faixas comuns (o eixo do grafo é o centro delas) e largura das faixas de ônibus de cada lado.</summary>
             public float GenHalf;
             public float BusLeft;
@@ -206,6 +209,17 @@ namespace Entregador.Editor
             return null;
         }
 
+        /// <summary>Limite da rua em km/h: a tag do OSM, ou o costume de São Paulo (avenida 50, rua coletora 40, residencial 30).</summary>
+        private static int SpeedLimitOf(Road r)
+        {
+            switch (r.Kind)
+            {
+                case RoadKind.Primary: return Entregador.Core.LimitesDeVelocidade.Resolver(r.MaxSpeed, Entregador.Core.LimitesDeVelocidade.Avenida);
+                case RoadKind.Tertiary: return Entregador.Core.LimitesDeVelocidade.Resolver(r.MaxSpeed, Entregador.Core.LimitesDeVelocidade.Coletora);
+                default: return Entregador.Core.LimitesDeVelocidade.Resolver(r.MaxSpeed, Entregador.Core.LimitesDeVelocidade.Local);
+            }
+        }
+
         private static Road MakeRoad(OsmWay way, RoadKind kind, bool link)
         {
             string oneway = way.Tag("oneway");
@@ -272,6 +286,7 @@ namespace Entregador.Editor
                 Ids = way.NodeIds,
                 Oneway = isOneway && kind != RoadKind.Pedestrian,
                 Reverse = oneway == "-1",
+                MaxSpeed = Entregador.Core.LimitesDeVelocidade.LerTag(way.Tag("maxspeed")),
                 LaneWidth = laneWidth,
                 GenHalf = general * 0.5f,
                 BusLeft = busLeft * laneWidth,
@@ -1044,6 +1059,7 @@ namespace Entregador.Editor
             var edgeFrom = new List<int>();
             var edgeTo = new List<int>();
             var edgeOneway = new List<bool>();
+            var edgeLimit = new List<int>();
             GraphEdges.Clear();
 
             for (int e = 0; e < from.Count; e++)
@@ -1056,11 +1072,12 @@ namespace Entregador.Editor
                 edgeFrom.Add(remap[from[e]]);
                 edgeTo.Add(remap[to[e]]);
                 edgeOneway.Add(oneway[e]);
+                edgeLimit.Add(SpeedLimitOf(roadOf[e].road));
                 GraphEdges.Add(new GraphEdge { Road = roadOf[e].road, Segment = roadOf[e].segment, From = remap[from[e]], To = remap[to[e]] });
             }
 
             var graph = world.AddComponent<RoadGraph>();
-            graph.Configure(nodes.ToArray(), edgeFrom.ToArray(), edgeTo.ToArray(), edgeOneway.ToArray());
+            graph.Configure(nodes.ToArray(), edgeFrom.ToArray(), edgeTo.ToArray(), edgeOneway.ToArray(), edgeLimit.ToArray());
             Debug.Log($"[CityBuilder] Grafo: {nodes.Count} nós, {edgeFrom.Count} trechos ({positions.Count - nodes.Count} nós descartados fora da componente principal).");
 
             return graph;

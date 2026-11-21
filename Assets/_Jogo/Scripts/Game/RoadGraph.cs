@@ -16,6 +16,7 @@ namespace Entregador.Game
         [SerializeField] private int[] _edgeFrom = new int[0];
         [SerializeField] private int[] _edgeTo = new int[0];
         [SerializeField] private bool[] _edgeOneway = new bool[0];
+        [SerializeField] private int[] _edgeLimit = new int[0];
 
         /// <summary>Custo (multiplicador da distância) de andar contra o sentido único.</summary>
         public const float WrongWayPenalty = 2.2f;
@@ -35,11 +36,76 @@ namespace Entregador.Game
 
         public Vector3 NodePosition(int index) => _nodes[index];
 
-        public bool IsOneway(int edge) => edge < _edgeOneway.Length && _edgeOneway[edge];
+        public bool IsOneway(int edge) => edge >= 0 && edge < _edgeOneway.Length && _edgeOneway[edge];
+
+        /// <summary>Limite de velocidade (km/h) do trecho. 50 se o gerador não informou.</summary>
+        public int SpeedLimitKmh(int edge) => edge >= 0 && edge < _edgeLimit.Length && _edgeLimit[edge] > 0 ? _edgeLimit[edge] : DefaultLimitKmh;
+
+        public const int DefaultLimitKmh = 50;
+
+        /// <summary>Direção (plano, unitária) da mão certa do trecho: de from para to.</summary>
+        public Vector3 EdgeDirection(int edge)
+        {
+            Vector3 d = _nodes[_edgeTo[edge]] - _nodes[_edgeFrom[edge]];
+            d.y = 0f;
+
+            return d.normalized;
+        }
+
+        public Vector3 EdgeStart(int edge) => _nodes[_edgeFrom[edge]];
+
+        public Vector3 EdgeEnd(int edge) => _nodes[_edgeTo[edge]];
+
+        /// <summary>
+        /// Informações da rua sob a moto: trecho mais próximo, limite de velocidade e se ela anda contra a mão num trecho de sentido único.
+        /// Só considera contramão quando a moto está rente ao trecho (menos de maxDistance) e anda alinhada com ele (cruzar a rua não conta).
+        /// </summary>
+        public RoadSample Sample(Vector3 position, Vector3 heading, float maxDistance = 9f)
+        {
+            var sample = new RoadSample { Edge = -1, LimitKmh = DefaultLimitKmh };
+
+            if (_edgeFrom.Length == 0)
+            {
+                return sample;
+            }
+
+            int edge = NearestEdge(position, out Vector3 snapped);
+            float distance = Mathf.Sqrt(FlatSqr(snapped - position));
+
+            if (edge < 0 || distance > maxDistance)
+            {
+                return sample;
+            }
+
+            sample.Edge = edge;
+            sample.Distance = distance;
+            sample.LimitKmh = SpeedLimitKmh(edge);
+            sample.Oneway = IsOneway(edge);
+            heading.y = 0f;
+
+            if (sample.Oneway && heading.sqrMagnitude > 0.01f)
+            {
+                float alignment = Vector3.Dot(heading.normalized, EdgeDirection(edge));
+                sample.WrongWay = alignment < -0.8f;
+            }
+
+            return sample;
+        }
+
+        /// <summary>Resultado de RoadGraph.Sample.</summary>
+        public struct RoadSample
+        {
+            public int Edge;
+            public float Distance;
+            public int LimitKmh;
+            public bool Oneway;
+            public bool WrongWay;
+        }
 
         /// <summary>Usado pelo gerador da cidade. edgeOneway (opcional): true = só de from para to.</summary>
-        public void Configure(Vector3[] nodes, int[] edgeFrom, int[] edgeTo, bool[] edgeOneway = null)
+        public void Configure(Vector3[] nodes, int[] edgeFrom, int[] edgeTo, bool[] edgeOneway = null, int[] edgeLimitKmh = null)
         {
+            _edgeLimit = edgeLimitKmh ?? new int[0];
             _nodes = nodes;
             _edgeFrom = edgeFrom;
             _edgeTo = edgeTo;

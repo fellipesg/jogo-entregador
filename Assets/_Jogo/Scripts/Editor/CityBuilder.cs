@@ -95,10 +95,11 @@ namespace Entregador.Editor
 
             BuildProps(props, new System.Random(55), avoid, map);
             FinishBatches(blocks);
+            BuildFiscalizacao(world.transform, spawn, restaurants, customers);
 
             var cityMap = world.AddComponent<CityMap>();
             cityMap.Configure(restaurants, customers, _graph, spawn, spawnYaw, Vector2.zero, 2f * PlayableHalf);
-            cityMap.SetViewPoints(BuildViewPoints(map));
+            cityMap.SetViewPoints(AppendFiscalViews(BuildViewPoints(map)));
             cityMap.SetBusLanes(BusLanes.ToArray());
 
             ArcadeBikeController bike = BikeFactory.Build(spawn, spawnYaw);

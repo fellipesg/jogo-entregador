@@ -20,13 +20,28 @@ namespace Entregador.Game
         Claim,
         ShiftSummary,
         WeekReport,
+
+        /// <summary>Tela de novo jogo: personagem, moto, CNH.</summary>
+        Setup,
+
+        /// <summary>A polícia mandou parar: a moto freia e o jogador escolhe Parar ou Fugir.</summary>
+        Abordagem,
+
+        /// <summary>Fugiu: a viatura vem atrás por alguns segundos.</summary>
+        Perseguicao,
+
+        /// <summary>Resultado da abordagem na tela (multas, atraso), antes de voltar à corrida.</summary>
+        AbordagemResultado,
+
+        /// <summary>A moto foi levada ao pátio ou apreendida: o dia acaba.</summary>
+        MotoRetida,
     }
 
     /// <summary>
     /// Máquina de estados do jogo: dona da GameSession, liga as regras (Core) à moto, ao mapa e às telas.
     /// Cada método público de ação corresponde a um botão da interface (e é chamado direto pelos testes).
     /// </summary>
-    public sealed class GameFlow : MonoBehaviour
+    public sealed partial class GameFlow : MonoBehaviour
     {
         private static readonly string[] DayNames = { "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo" };
 
@@ -117,10 +132,35 @@ namespace Entregador.Game
             AdService = GetComponent<FakeAdService>();
         }
 
+        private void OnEnable()
+        {
+            BlitzSite.BikeEntered += OnBlitzEntered;
+        }
+
+        private void OnDisable()
+        {
+            BlitzSite.BikeEntered -= OnBlitzEntered;
+
+            if (_monitor != null)
+            {
+                _monitor.FlagranteVisto -= OnFlagrante;
+            }
+        }
+
         private void Start()
         {
             _ui.Build(_input, _minimap != null ? _minimap.Texture : null, SkipRun);
-            NewWeek(_seed);
+            InitFiscalizacao();
+
+            if (ShowSetupOnStart)
+            {
+                ApplyProfile();
+                ShowSetup();
+            }
+            else
+            {
+                NewWeek(_seed);
+            }
         }
 
         // ---------- Semana ----------
@@ -129,7 +169,11 @@ namespace Entregador.Game
         public void NewWeek(int seed = 0, IGameRandom random = null)
         {
             _random = random ?? new SeededRandom(seed != 0 ? seed : Environment.TickCount);
-            Session = new GameSession(_random);
+            Session = new GameSession(_random, EconomyForProfile(), null, null, _perfil.ParaRegras());
+            ApplyProfile();
+            _tracker.ClearRadar();
+            _multasVistas = 0;
+            _abordagem = null;
             WeekReport = null;
             CurrentOrder = null;
             LastResult = null;
@@ -158,6 +202,7 @@ namespace Entregador.Game
 
             State = FlowState.DayStart;
             EnterIdle();
+            EndOfDayFiscalizacao();
             ApplyWeather(Session.IsRainingToday);
 
             var body = new StringBuilder();
@@ -167,7 +212,8 @@ namespace Entregador.Game
             body.AppendLine("Dias de chuva na semana: " + RainyDaysText());
             body.AppendLine();
             body.AppendLine("Saldo: " + Session.Wallet.Balance);
-            body.AppendLine($"Aluguel da moto: {Session.Rental.WeeklyRent}, cobrado no fim da semana");
+            body.AppendLine(MotoCostLine());
+            AppendNotifications(body);
             body.AppendLine($"Entregas na semana: {Session.App.DeliveriesThisWeek}/{Session.App.Config.GoalDeliveries}   Nota: {Rating(Session.App.Rating)}");
 
             if (Session.IsRainingToday && !Session.HasRaincoat)
@@ -175,15 +221,21 @@ namespace Entregador.Game
                 body.AppendLine("Sem capa de chuva você perde uma estrela por entrega.");
             }
 
-            var buttons = new List<PanelButton>
-            {
-                new PanelButton("Começar turno", BeginShift),
-                new PanelButton("Folgar", TakeDayOff),
-            };
+            var buttons = new List<PanelButton>();
 
-            if (!Session.HasRaincoat)
+            if (Session.MotoStatus == MotoStatus.Ok)
             {
-                buttons.Add(new PanelButton($"Comprar capa ({Session.Economy.Raincoat})", BuyRaincoat));
+                buttons.Add(new PanelButton("Começar turno", BeginShift));
+                buttons.Add(new PanelButton("Folgar", TakeDayOff));
+
+                if (!Session.HasRaincoat)
+                {
+                    buttons.Add(new PanelButton($"Comprar capa ({Session.Economy.Raincoat})", BuyRaincoat));
+                }
+            }
+            else
+            {
+                AddNoMotoOptions(body, buttons);
             }
 
             _ui.ShowModal($"Dia {Session.Day}: {DayName(Session.Day)}", body.ToString().TrimEnd(), buttons.ToArray());
@@ -231,6 +283,7 @@ namespace Entregador.Game
             }
 
             _deliveriesToday = 0;
+            OpenDayFiscalizacao();
             OfferNext();
         }
 
@@ -329,6 +382,8 @@ namespace Entregador.Game
 
         private void Update()
         {
+            TickFiscalizacao();
+
             if (State == FlowState.Offer)
             {
                 TickOffer();
@@ -369,8 +424,11 @@ namespace Entregador.Game
                 (State == FlowState.DrivingToRestaurant ? "Retirar em: " : "Entregar em: ") + target.Name,
                 _tracker.ElapsedSeconds,
                 _tracker.ExpectedSeconds,
-                _bike.Speed * 3.6f,
-                _tracker.FoodCondition);
+                _bike.SpeedKmh,
+                _tracker.FoodCondition,
+                _monitor != null ? _monitor.LimitKmh : 0,
+                _bike.Gear,
+                _bike.Rpm);
 
             if (!_flatTireRolled && _tracker.Progress >= _tuning.FlatTireAtProgress)
             {
@@ -451,6 +509,7 @@ namespace Entregador.Game
 
             RunReport report = _tracker.BuildReport(_tuning.WorldToGameKm);
             DeliveryResult result = Session.FinishRun(CurrentOrder, report);
+            _tracker.ClearRadar();
             FinishRun(result);
         }
 
@@ -665,7 +724,7 @@ namespace Entregador.Game
             EnterIdle();
             CurrentOrder = null;
 
-            string body = $"Entregas hoje: {_deliveriesToday}\nResultado do dia: {Session.Wallet.NetForDay(Session.Day)}\nSaldo: {Session.Wallet.Balance}\nNota: {Rating(Session.App.Rating)}";
+            string body = $"Entregas hoje: {_deliveriesToday}\nResultado do dia: {Session.Wallet.NetForDay(Session.Day)}\nSaldo: {Session.Wallet.Balance}\nNota: {Rating(Session.App.Rating)}\n" + TransitoSummary(false);
             string next = Session.Day >= Session.Economy.DaysPerWeek ? "Fechar a semana" : "Próximo dia";
 
             _ui.ShowModal($"Fim do turno: {DayName(Session.Day)}", body, new PanelButton(next, EndShift));
@@ -695,19 +754,21 @@ namespace Entregador.Game
             WeekReport report = WeekReport;
             string title = report.Result == WeekResult.SemanaBoa ? "Semana boa!"
                 : report.Result == WeekResult.Sobreviveu ? "Deu pra pagar. Semana que vem tem mais."
+                : report.Result == WeekResult.SemMoto ? "Sem moto para trabalhar."
                 : "No vermelho.";
 
             var body = new StringBuilder();
             body.AppendLine("Entregas: " + report.Deliveries);
             body.AppendLine("Bônus da meta: " + report.Bonus);
             body.AppendLine("Multas: " + report.Fines);
-            body.AppendLine("Aluguel da moto: " + report.Rent);
+            body.AppendLine((report.Transito != null && report.Transito.OrigemMoto == MotoOrigem.Bob ? "Parcela da moto: " : "Aluguel da moto: ") + report.Rent);
             body.AppendLine("Caução devolvida: " + report.DepositRefund);
             body.AppendLine("Nota final: " + Rating(report.Rating));
-            body.Append("Saldo final: " + report.FinalBalance);
+            body.AppendLine("Saldo final: " + report.FinalBalance);
+            body.Append(TransitoSummary(true));
 
-            string button = report.Result == WeekResult.NoVermelho ? "Tentar de novo" : "Jogar outra semana";
-            _ui.ShowModal(title, body.ToString(), new PanelButton(button, () => NewWeek()));
+            string button = report.Result == WeekResult.NoVermelho || report.Result == WeekResult.SemMoto ? "Tentar de novo" : "Jogar outra semana";
+            _ui.ShowModal(title, body.ToString().TrimEnd(), new PanelButton(button, () => NewWeek()), new PanelButton("Novo perfil", ShowSetup));
         }
 
         // ---------- Utilidades ----------

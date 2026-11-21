@@ -6,7 +6,8 @@
         "UnityEditor.TestRunner",
         "Entregador.Core",
         "Entregador.Game",
-        "UnityEngine.UI"
+        "UnityEngine.UI",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

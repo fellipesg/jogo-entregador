@@ -8,6 +8,7 @@ namespace Entregador.Game
     {
         [SerializeField] private ArcadeBikeController _bike;
 
+        private readonly RunReport _radar = new RunReport();
         private Vector3 _lastPosition;
         private bool _hasLast;
 
@@ -31,6 +32,12 @@ namespace Entregador.Game
         public bool PhotoTaken { get; set; }
 
         public int BumpsOrHits { get; private set; }
+
+        /// <summary>Infrações que radares fixos capturaram (o jogador não é avisado; a multa chega dias depois, pelo Core).</summary>
+        public int RadarCaptures => _radar.Capturas.Count;
+
+        /// <summary>Maior velocidade (km/h) da corrida, para o relatório.</summary>
+        public float TopSpeedKmh { get; private set; }
 
         public float Progress => PlannedMeters <= 0f ? 0f : Mathf.Clamp01(MetersDriven / PlannedMeters);
 
@@ -74,8 +81,21 @@ namespace Entregador.Game
             DamageAdded = 0f;
             PhotoTaken = false;
             BumpsOrHits = 0;
+            TopSpeedKmh = 0f;
             _hasLast = false;
             Running = true;
+        }
+
+        /// <summary>Um radar mediu a moto. Só vale com a corrida em andamento. Devolve true se a velocidade gerou infração (com a tolerância do CTB).</summary>
+        public bool RegisterRadar(double measuredKmh, double limitKmh)
+        {
+            return Running && _radar.AddRadar(measuredKmh, limitKmh);
+        }
+
+        /// <summary>Entrega as capturas à sessão (FinishRun) e zera a lista. Capturas de uma corrida cancelada ficam para a próxima.</summary>
+        public void ClearRadar()
+        {
+            _radar.Capturas.Clear();
         }
 
         public void Pause() => Running = false;
@@ -109,6 +129,7 @@ namespace Entregador.Game
             }
 
             Vector3 position = _bike.Position;
+            TopSpeedKmh = Mathf.Max(TopSpeedKmh, _bike.SpeedKmh);
 
             if (_hasLast)
             {
@@ -150,7 +171,7 @@ namespace Entregador.Game
 
         public RunReport BuildReport(float worldToGameKm)
         {
-            return new RunReport
+            var report = new RunReport
             {
                 KmDriven = MetersDriven * worldToGameKm,
                 TimeRatio = ElapsedSeconds / ExpectedSeconds,
@@ -159,6 +180,10 @@ namespace Entregador.Game
                 Fines = 0,
                 PhotoTaken = PhotoTaken,
             };
+
+            report.Capturas.AddRange(_radar.Capturas);
+
+            return report;
         }
     }
 }

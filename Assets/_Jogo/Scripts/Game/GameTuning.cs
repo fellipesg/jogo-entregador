@@ -34,6 +34,30 @@ namespace Entregador.Game
         [Tooltip("Segundos do anúncio falso.")]
         public float FakeAdSeconds = 2f;
 
+        [Header("Controles")]
+        [Tooltip("Esterçar inclinando o celular (acelerômetro), além do arrasto na metade esquerda da tela. Desligado por padrão.")]
+        public bool TiltSteering = false;
+
+        [Header("Moto alugada")]
+        [Tooltip("Aluguel semanal a mais para o Tornado 250 (a Titã 160 usa o aluguel padrão da economia).")]
+        public float TornadoRentExtra = 120f;
+
+        [Tooltip("Caução a mais para o Tornado 250.")]
+        public float TornadoDepositExtra = 60f;
+
+        [Header("Fiscalização")]
+        [Tooltip("Distância (m) máxima em que a polícia vê uma infração (com linha de visão livre).")]
+        public float PoliceSightMeters = 40f;
+
+        [Tooltip("Excesso de velocidade (fração acima do limite da rua) que a polícia autua em flagrante: 0,2 = 20%.")]
+        public float PoliceSpeedTolerance = 0.2f;
+
+        [Tooltip("Duração da perseguição (s) depois de escolher Fugir.")]
+        public float ChaseSeconds = 20f;
+
+        [Tooltip("Distância (m) em que a viatura alcança a moto na perseguição.")]
+        public float CatchMeters = 4f;
+
         public float KmFromMeters(float meters) => meters * WorldToGameKm;
     }
 }
