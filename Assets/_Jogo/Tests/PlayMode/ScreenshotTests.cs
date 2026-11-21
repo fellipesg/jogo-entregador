@@ -272,6 +272,110 @@ namespace Entregador.Game.Tests
             Save(dir, "e_chuva_avenida.png", main);
         }
 
+        private static void Look(Camera camera, Vector3 position, Vector3 target)
+        {
+            camera.transform.position = position;
+            camera.transform.rotation = Quaternion.LookRotation(target - position, Vector3.up);
+        }
+
+        /// <summary>Closes da moto e do piloto: 3/4 frontal parada (pé no chão), lateral, curva inclinada, cinco personagens e os dois modelos.</summary>
+        [UnityTest]
+        public IEnumerator CaptureMoto()
+        {
+            string dir = Dir;
+            Camera main = Camera.main;
+            var follow = main.GetComponent<FollowCamera>();
+            StartDryWeek();
+            Flow.Ui.SetHudVisible(false);
+            Vector3 spot = ClearStreetSpot(1, 2f);
+            Flow.Bike.SetLocked(true);
+            Flow.Bike.Teleport(new Vector3(spot.x, 0.1f, spot.z), 0f);
+            follow.Snap();
+            yield return new WaitForSeconds(0.8f);
+            MotoVisual visual = Flow.Bike.GetComponentInChildren<MotoVisual>();
+            Assert.IsNotNull(visual, "A moto não tem MotoVisual.");
+            File.AppendAllText(Path.Combine(dir, "stats.txt"), $"moto+piloto triangulos={visual.Triangulos}\n");
+
+            // Vista normal de trás, parada.
+            Save(dir, "m0_tras_normal.png", main, false);
+            follow.enabled = false;
+            Vector3 p = Flow.Bike.transform.position;
+            Vector3 c = p + Vector3.up * 0.85f;
+
+            Look(main, p + new Vector3(2.2f, 1.5f, 2.4f), c);
+            main.fieldOfView = 40f;
+            yield return null;
+            Save(dir, "m1_tres_quartos_frontal_titan.png", main, false);
+
+            Look(main, p + new Vector3(3.6f, 1.05f, 0f), c);
+            yield return null;
+            Save(dir, "m2_lateral_titan.png", main, false);
+
+            Look(main, p + new Vector3(-2.4f, 1.7f, -3f), c);
+            yield return null;
+            Save(dir, "m3_tras_3_4_titan.png", main, false);
+
+            // Twister (troca em jogo).
+            visual.Configurar(MotoModelo.Twister, MotoCor.Azul, Personagem.Camila);
+            yield return null;
+            Look(main, p + new Vector3(2.2f, 1.5f, 2.4f), c);
+            yield return null;
+            Save(dir, "m4_tres_quartos_frontal_twister.png", main, false);
+            Look(main, p + new Vector3(3.6f, 1.05f, 0f), c);
+            yield return null;
+            Save(dir, "m5_lateral_twister.png", main, false);
+            visual.Configurar(MotoModelo.Titan, MotoCor.Vermelha, Personagem.Jefinho);
+
+            // Curva: acelera e esterça, câmera ao lado e um pouco atrás.
+            Flow.Bike.SetLocked(false);
+            Flow.Bike.GetComponent<BikeInput>().SetVirtual(0f, 1f, 0f);
+            yield return new WaitForSeconds(1.6f);
+            Flow.Bike.GetComponent<BikeInput>().SetVirtual(1f, 1f, 0f);
+            yield return new WaitForSeconds(0.9f);
+            Transform bt = Flow.Bike.transform;
+            Look(main, bt.position + bt.forward * 3.2f + bt.right * 2.8f + Vector3.up * 1.3f, bt.position + Vector3.up * 0.9f);
+            yield return null;
+            Save(dir, "m6_curva_inclinada.png", main, false);
+            Look(main, bt.position - bt.forward * 3.4f + bt.right * 1.2f + Vector3.up * 1.6f, bt.position + Vector3.up * 0.9f);
+            yield return null;
+            Save(dir, "m6b_curva_tras.png", main, false);
+            Flow.Bike.GetComponent<BikeInput>().SetVirtual(0f, 0f, 1f);
+            yield return new WaitForSeconds(0.25f);
+            Look(main, bt.position - bt.forward * 3.0f + bt.right * 1.5f + Vector3.up * 1.4f, bt.position + Vector3.up * 0.9f);
+            yield return null;
+            Save(dir, "m6c_freando.png", main, false);
+            Flow.Bike.GetComponent<BikeInput>().ClearAll();
+            Flow.Bike.SetLocked(true);
+            yield return new WaitForSeconds(1f);
+
+            // Cinco personagens lado a lado (Titã) e dois Tornados atrás.
+            Vector3 origin = Flow.Map.BikeSpawn + new Vector3(0f, 0f, 4f);
+            float groundY = Flow.Bike.transform.position.y;
+            Personagem[] all = { Personagem.Jefinho, Personagem.Robsao, Personagem.Marcao, Personagem.SeuValdir, Personagem.Camila };
+            MotoCor[] cores = { MotoCor.Vermelha, MotoCor.Preta, MotoCor.Azul, MotoCor.Branca, MotoCor.Vermelha };
+
+            for (int i = 0; i < 5; i++)
+            {
+                Vector3 pos = new Vector3(origin.x, groundY, origin.z + (i - 2) * 1.5f);
+                MotoVisual.CriarPrevia(visual, pos, 270f, MotoModelo.Titan, cores[i], all[i]);
+                MotoVisual.CriarPrevia(visual, pos + new Vector3(0f, 0f, 12f), 270f, MotoModelo.Twister, cores[(i + 1) % 5], all[(i + 2) % 5]);
+            }
+
+            yield return null;
+            yield return null;
+            Look(main, origin + new Vector3(-5.4f, 1.6f, 0f), origin + new Vector3(1f, 0.85f, 0f));
+            main.fieldOfView = 55f;
+            yield return null;
+            Save(dir, "m7_cinco_personagens.png", main, false);
+            Look(main, origin + new Vector3(-5.2f, 1.6f, 12f), origin + new Vector3(1f, 0.85f, 12f));
+            yield return null;
+            Save(dir, "m8_cinco_personagens_twister.png", main, false);
+            Look(main, origin + new Vector3(-2.2f, 1.2f, 4.2f), origin + new Vector3(0f, 0.95f, 1.5f));
+            yield return null;
+            Save(dir, "m9_personagens_proximo.png", main, false);
+            follow.enabled = true;
+        }
+
         /// <summary>Grava batches, SetPass e triângulos do último quadro renderizado (UnityStats, só no Editor).</summary>
         private static void ReportStats(string dir, string label, Camera camera)
         {

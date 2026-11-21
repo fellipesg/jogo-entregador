@@ -6,8 +6,8 @@ namespace Entregador.Game
     public sealed class FollowCamera : MonoBehaviour
     {
         [SerializeField] private ArcadeBikeController _target;
-        [SerializeField] private float _distance = 7.5f;
-        [SerializeField] private float _height = 3.6f;
+        [SerializeField] private float _distance = 6.5f;
+        [SerializeField] private float _height = 3.2f;
         [SerializeField] private float _lookAhead = 5f;
         [SerializeField] private float _positionSharpness = 7f;
         [SerializeField] private float _headingSharpness = 3f;

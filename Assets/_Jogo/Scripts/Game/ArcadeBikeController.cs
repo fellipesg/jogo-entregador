@@ -65,6 +65,15 @@ namespace Entregador.Game
         /// <summary>Velocidade para frente em m/s (negativa na ré).</summary>
         public float ForwardSpeed { get; private set; }
 
+        /// <summary>Direção aplicada neste quadro de física (-1 a 1; 0 com a moto travada). Só leitura, para o visual.</summary>
+        public float SteerInput { get; private set; }
+
+        /// <summary>Freio do jogador (0 a 1; 0 com a moto travada). Só leitura, para a lanterna.</summary>
+        public float BrakeInput { get; private set; }
+
+        /// <summary>Inclinação visual atual em graus (sinal do eixo Z; positivo = para a esquerda).</summary>
+        public float Lean => _lean;
+
         public float Speed => new Vector3(_body.linearVelocity.x, 0f, _body.linearVelocity.z).magnitude;
 
         public void Configure(BikeInput input, Transform leanRoot)
@@ -117,6 +126,8 @@ namespace Entregador.Game
             float steerInput = Locked || _input == null ? 0f : _input.Steer;
             float gas = Locked || _input == null ? 0f : _input.Gas;
             float brake = Locked || _input == null ? 1f : _input.Brake;
+            SteerInput = steerInput;
+            BrakeInput = Locked || _input == null ? 0f : _input.Brake;
 
             Vector3 velocity = _body.linearVelocity;
 

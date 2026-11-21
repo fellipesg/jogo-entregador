@@ -63,7 +63,17 @@ Os modelos vêm dos kits do [Kenney](https://www.kenney.nl) (licença Creative C
 | Suburban | não é mais usado (sobrados e árvores gerados por código) |
 | Car | carros estacionados, o trânsito (`TrafficLoop`) e as rodas (`wheel-default`) da moto |
 
-Não existe moto nos kits: a moto é feita de primitivas em `BikeFactory` (corpo fino, tanque, guidão, farol, piloto com capacete, baú vermelho com tampa) com as rodas do Car Kit.
+Não existe moto nos kits: a moto e o piloto são procedurais (seção "Moto e piloto" abaixo); o Car Kit só fornece os carros.
+
+## Moto e piloto (procedurais)
+
+Moto e entregador são malhas lisas geradas por código (`Assets/_Jogo/Scripts/Game/Moto/`), sem primitivas do Unity: `MotoMeshKit` (loft de superelipses, tubos de ponta arredondada, revolução de perfis), `MotoModel` (moto), `RiderModel` (piloto), `MotoCatalogo` (enums e parâmetros) e `MotoVisual` (montagem e animação). O `BikeFactory` só cria Rigidbody + collider (inalterados) e o `MotoVisual`; as malhas são salvas em `Scenes/SantoAmaro_MotoMalhas.asset`.
+
+- Modelos (`MotoModelo`, nomes fictícios): `Titan` = "Titã 160" (street clássica: farol redondo, tanque reto, banco longo, escape cromado) e `Twister` = "Tornado 250" (naked: carenagem angular com mini para-brisa, tanque com abas, banco escalonado, escape preto sob o motor). Cores: `MotoCor` (Vermelha, Preta, Azul, Branca).
+- Personagens (`Personagem`): Jefinho (padrão), Robsao, Marcao, SeuValdir, Camila; corpo e cores em `MotoCatalogo.Config`.
+- Trocar em jogo: `GetComponentInChildren<MotoVisual>().Configurar(MotoModelo.Twister, MotoCor.Azul, Personagem.Camila)` (remonta as malhas); `DefinirApp(cor, nome)` muda cor e texto do baú.
+- Materiais: 4 (`Moto_Paleta` e `Moto_Metal` leem cor e suavidade de uma paleta 64x1; `Moto_Luzes` com emissão por MaterialPropertyBlock; `Moto_Bau`). Cerca de 7,9 mil triângulos moto + piloto.
+- Animação (sem Animator): rodas giram, garfo/guidão esterçam no eixo inclinado, moto inclina pela velocidade x direção (só visual; piloto 35% a mais), parada tomba 5 graus e o pé esquerdo desce ao chão, lanterna acende ao frear. Braços e pernas usam IK de dois ossos até as manoplas e pedaleiras. O `ArcadeBikeController` só ganhou propriedades de leitura (`SteerInput`, `BrakeInput`, `Lean`).
 
 ## Arte semi-realista (Poly Haven, CC0)
 
