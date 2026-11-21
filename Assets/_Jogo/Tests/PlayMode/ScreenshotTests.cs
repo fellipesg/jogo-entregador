@@ -10,7 +10,7 @@ namespace Entregador.Game.Tests
     /// Gera imagens da cena para revisão. Só grava quando a variável de ambiente JOGO_SHOTS_DIR existe.
     /// Rodar sem -nographics (precisa de GPU).
     /// </summary>
-    public sealed class ScreenshotTests : SceneFixture
+    public sealed partial class ScreenshotTests : SceneFixture
     {
         private const int Width = 1600;
         private const int Height = 900;

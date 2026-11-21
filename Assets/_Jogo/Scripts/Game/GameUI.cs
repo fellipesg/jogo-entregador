@@ -23,7 +23,7 @@ namespace Entregador.Game
 
     /// <summary>
     /// Toda a interface, montada por código: HUD de direção, botões de toque, minimapa, avisos e o painel genérico
-    /// (título, texto e até quatro botões) usado em todas as telas do fluxo.
+    /// (título, texto e até seis botões) usado em todas as telas do fluxo.
     /// </summary>
     public sealed class GameUI : MonoBehaviour
     {
@@ -40,6 +40,9 @@ namespace Entregador.Game
         private TMP_Text _targetText;
         private TMP_Text _timeText;
         private TMP_Text _speedText;
+        private TMP_Text _gearText;
+        private GameObject _limitPlate;
+        private TMP_Text _limitText;
         private RectTransform _foodFill;
         private Image _foodFillImage;
         private TMP_Text _foodLabel;
@@ -153,7 +156,7 @@ namespace Entregador.Game
             _skipButton.onClick.AddListener(() => onSkip?.Invoke());
 
             // Velocímetro e comida, base central.
-            RectTransform bottom = NewPanel("Painel", _hudRoot.transform, HudColor, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 16f), new Vector2(280f, 96f));
+            RectTransform bottom = NewPanel("Painel", _hudRoot.transform, HudColor, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 16f), new Vector2(280f, 132f));
             _speedText = NewText("Velocidade", bottom, 40, TextAlignmentOptions.Top, Color.white, new Vector2(0f, -4f), new Vector2(260f, 50f));
             RectTransform foodBack = NewPanel("ComidaFundo", bottom, new Color(1f, 1f, 1f, 0.2f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(240f, 18f));
             var fillObject = new GameObject("ComidaBarra", typeof(RectTransform), typeof(Image));
@@ -169,38 +172,51 @@ namespace Entregador.Game
             _foodLabel.rectTransform.anchoredPosition = new Vector2(0f, 34f);
             _foodLabel.text = "Comida";
 
+            // Marcha e giro (texto simples; a próxima rodada de UI redesenha o painel).
+            _gearText = NewText("Marcha", bottom, 16, TextAlignmentOptions.Top, new Color(0.85f, 0.9f, 1f), new Vector2(0f, -54f), new Vector2(260f, 22f));
+
+            // Placa do limite de velocidade da rua (círculo vermelho com o número), à esquerda do velocímetro.
+            RectTransform ring = NewPanel("PlacaLimiteAro", _hudRoot.transform, new Color(0.85f, 0.1f, 0.1f, 0.95f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(-180f, 24f), new Vector2(64f, 64f));
+            _limitPlate = ring.gameObject;
+            RectTransform face = NewPanel("PlacaLimiteFace", ring, new Color(1f, 1f, 1f, 0.98f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(46f, 46f));
+            _limitText = NewText("PlacaLimiteTexto", face, 24, TextAlignmentOptions.Center, Color.black, Vector2.zero, new Vector2(46f, 46f));
+            _limitText.fontStyle = FontStyles.Bold;
+            _limitText.rectTransform.anchorMin = _limitText.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            _limitText.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            _limitText.rectTransform.anchoredPosition = Vector2.zero;
+            _limitPlate.SetActive(false);
+
             BuildControls(_hudRoot.transform);
         }
 
+        /// <summary>
+        /// Controles de toque sem botões: a metade esquerda da tela dirige (arrastar para os lados) e a direita acelera ou freia
+        /// (arrastar para cima ou para baixo). As zonas são invisíveis; um anel discreto marca onde o dedo pousou.
+        /// Ficam atrás de todo o resto do HUD (este objeto é o primeiro filho), então os botões continuam clicáveis.
+        /// </summary>
         private void BuildControls(Transform parent)
         {
             _controlsRoot = NewRect("Controles", parent).gameObject;
             Stretch(_controlsRoot.GetComponent<RectTransform>());
+            _controlsRoot.transform.SetAsFirstSibling();
 
-            AddHold("Esquerda", "<", new Vector2(0f, 0f), new Vector2(24f, 24f), new Vector2(150f, 150f), down => _input.TouchLeft = down);
-            AddHold("Direita", ">", new Vector2(0f, 0f), new Vector2(190f, 24f), new Vector2(150f, 150f), down => _input.TouchRight = down);
-            AddHold("Acelerar", "ACELERAR", new Vector2(1f, 0f), new Vector2(-24f, 24f), new Vector2(190f, 190f), down => _input.TouchGas = down);
-            AddHold("Frear", "FREAR", new Vector2(1f, 0f), new Vector2(-234f, 24f), new Vector2(150f, 150f), down => _input.TouchBrake = down);
+            NewTouchZone("ZonaDirecao", new Vector2(0f, 0f), new Vector2(0.5f, 1f), TouchZoneMode.Direcao);
+            NewTouchZone("ZonaPedal", new Vector2(0.5f, 0f), new Vector2(1f, 1f), TouchZoneMode.Pedal);
         }
 
-        private void AddHold(string name, string label, Vector2 anchor, Vector2 position, Vector2 size, Action<bool> changed)
+        private void NewTouchZone(string name, Vector2 anchorMin, Vector2 anchorMax, TouchZoneMode mode)
         {
-            Color color = name == "Acelerar" ? new Color(0.2f, 0.75f, 0.35f, 0.7f) : name == "Frear" ? new Color(0.85f, 0.25f, 0.25f, 0.7f) : new Color(0.3f, 0.45f, 0.85f, 0.7f);
-            RectTransform rect = NewPanel(name, _controlsRoot.transform, color, anchor, anchor, position, size);
-            rect.pivot = anchor;
-            var labelObject = new GameObject("Texto", typeof(RectTransform), typeof(TextMeshProUGUI));
-            labelObject.transform.SetParent(rect, false);
-            Stretch(labelObject.GetComponent<RectTransform>());
-            var labelText = labelObject.GetComponent<TextMeshProUGUI>();
-            labelText.fontSize = name == "Esquerda" || name == "Direita" ? 80 : 28;
-            labelText.fontStyle = FontStyles.Bold;
-            labelText.alignment = TextAlignmentOptions.Center;
-            labelText.color = Color.white;
-            labelText.text = label;
-            labelText.raycastTarget = false;
-            labelText.richText = false;
-            rect.GetComponent<Image>().raycastTarget = true;
-            rect.gameObject.AddComponent<HoldButton>().Changed = changed;
+            RectTransform rect = NewRect(name, _controlsRoot.transform);
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+            rect.pivot = new Vector2(0.5f, 0.5f);
+
+            // Imagem totalmente transparente, mas que recebe o toque.
+            var image = rect.gameObject.AddComponent<Image>();
+            image.color = new Color(1f, 1f, 1f, 0f);
+            image.raycastTarget = true;
+            rect.gameObject.AddComponent<TouchZone>().Configure(_input, mode);
         }
 
         public void SetHudVisible(bool visible)
@@ -209,7 +225,7 @@ namespace Entregador.Game
 
             if (!visible && _input != null)
             {
-                _input.TouchLeft = _input.TouchRight = _input.TouchGas = _input.TouchBrake = false;
+                _input.TouchSteer = _input.TouchGas = _input.TouchBrake = 0f;
             }
         }
 
@@ -224,8 +240,21 @@ namespace Entregador.Game
             _minimapImage.enabled = texture != null;
         }
 
-        public void UpdateHud(string balance, string day, string target, float elapsed, float expected, float speedKmh, float food)
+        public void UpdateHud(string balance, string day, string target, float elapsed, float expected, float speedKmh, float food,
+            int limitKmh = 0, int gear = 0, float rpm = 0f)
         {
+            if (_limitPlate != null)
+            {
+                _limitPlate.SetActive(limitKmh > 0);
+                _limitText.text = limitKmh.ToString();
+                _limitText.color = speedKmh > limitKmh * 1.05f ? new Color(0.8f, 0.05f, 0.05f) : Color.black;
+            }
+
+            if (_gearText != null)
+            {
+                _gearText.text = gear > 0 ? $"Marcha {gear}  |  {Mathf.RoundToInt(rpm / 100f) * 100} rpm" : string.Empty;
+            }
+
             _balanceText.text = balance;
             _dayText.text = day;
             _targetText.text = target;
@@ -257,8 +286,8 @@ namespace Entregador.Game
 
             RectTransform panel = NewPanel("Painel", dim, PanelColor, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(760f, 100f));
             var layout = panel.gameObject.AddComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(32, 32, 28, 28);
-            layout.spacing = 14f;
+            layout.padding = new RectOffset(32, 32, 22, 22);
+            layout.spacing = 10f;
             layout.childControlHeight = true;
             layout.childControlWidth = true;
             layout.childForceExpandHeight = false;
@@ -268,12 +297,12 @@ namespace Entregador.Game
             _modalTitle = NewLayoutText("Titulo", panel, 40, FontStyles.Bold, ButtonColor, TextAlignmentOptions.Left);
             _modalBody = NewLayoutText("Corpo", panel, 26, FontStyles.Normal, Color.white, TextAlignmentOptions.TopLeft);
 
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < 6; i++)
             {
                 Button button = NewButton("Botao" + i, panel, "-", 28, ButtonColor, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
                 var element = button.gameObject.AddComponent<LayoutElement>();
-                element.minHeight = 64f;
-                element.preferredHeight = 64f;
+                element.minHeight = 58f;
+                element.preferredHeight = 58f;
                 _modalButtons.Add(button);
                 _modalButtonLabels.Add(button.GetComponentInChildren<TMP_Text>());
             }
@@ -351,6 +380,13 @@ namespace Entregador.Game
             _toastText.text = message;
             _toastUntil = Time.unscaledTime + seconds;
             _toastText.transform.parent.gameObject.SetActive(true);
+        }
+
+        /// <summary>Esconde o aviso na hora (antes de abrir um painel que ocuparia o mesmo lugar).</summary>
+        public void ClearToast()
+        {
+            _toastUntil = 0f;
+            _toastText.transform.parent.gameObject.SetActive(false);
         }
 
         private void Update()
