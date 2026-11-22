@@ -411,7 +411,7 @@ namespace Entregador.Game
             if (outcome.DelayMinutes > 0)
             {
                 _delayMinutes += outcome.DelayMinutes;
-                _tracker.AddDelaySeconds(outcome.DelayMinutes * _tuning.SecondsPerGameMinute);
+                _tracker.AddDelaySeconds(outcome.DelayMinutes * SegundosPorMinuto);
                 body.AppendLine($"Você perdeu {outcome.DelayMinutes} min na abordagem.");
             }
 

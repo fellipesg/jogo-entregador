@@ -142,7 +142,7 @@ namespace Entregador.Game.Tests
         public IEnumerator WaitingShowsAProgressBarAndCostsTheMinutes()
         {
             AcceptOrder();
-            Flow.Tuning.SecondsPerGameMinute = 0.2f;
+            Flow.SegundosPorMinuto = 0.2f;
             Flow.SituacaoForcada = BalcaoSituacao.SaindoJaJa;
             yield return ParkAtCounter();
             Assert.IsTrue(Flow.Balcao.ClickPrompt());
@@ -240,14 +240,12 @@ namespace Entregador.Game.Tests
             Assert.AreEqual(FlowState.DrivingToCustomer, Flow.State);
             Assert.AreEqual(1, Flow.Retirada.PenalidadeEstrelas);
 
-            TeleportNear(Flow, Flow.CurrentPlan.Customer);
-            yield return new WaitForSeconds(0.2f);
-            Assert.AreEqual(FlowState.AtDoor, Flow.State);
+            yield return ArriveAtCustomer(Flow);
             Flow.TakePhoto();
             Flow.Deliver();
 
             Assert.LessOrEqual(Flow.LastResult.Stars, 4, "A estrela perdida no balcão aparece na nota.");
-            StringAssert.Contains("faltando", Flow.Ui.ModalBody);
+            StringAssert.Contains("faltando", Flow.Ui.ToastMessage);
         }
 
         [UnityTest]
@@ -264,10 +262,9 @@ namespace Entregador.Game.Tests
             Assert.IsTrue(Flow.Balcao.ClickChoice("Pegar o pedido"));
             _random.Value = 0.5;
             Assert.AreEqual(0, Flow.Retirada.PenalidadeEstrelas);
-            Assert.AreEqual(1, Flow.Retirada.MinutosPerdidos);
+            Assert.AreEqual(2, Flow.Retirada.MinutosPerdidos);
 
-            TeleportNear(Flow, Flow.CurrentPlan.Customer);
-            yield return new WaitForSeconds(0.2f);
+            yield return ArriveAtCustomer(Flow);
             Flow.TakePhoto();
             Flow.Deliver();
             Assert.AreEqual(Flow.Session.IsRainingToday ? 4 : 5, Flow.LastResult.Stars, "Sem perda por pedido trocado (só a chuva, se houver).");

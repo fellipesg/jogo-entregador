@@ -90,18 +90,18 @@ namespace Entregador.Core
         public double PesoTrocado = 12;
         public double PesoLotado = 10;
 
-        /// <summary>Minutos de jogo de preparo quando "tá saindo" (de EsperaMin a EsperaMax).</summary>
-        public int EsperaMin = 1;
+        /// <summary>Minutos de jogo de preparo quando "tá saindo" (de EsperaMin a EsperaMax): cozinha de verdade demora (ver RelogioJogo).</summary>
+        public int EsperaMin = 3;
 
-        public int EsperaMax = 8;
+        public int EsperaMax = 15;
 
         /// <summary>Minutos da fila quando o restaurante está lotado.</summary>
         public int FilaMin = 2;
 
-        public int FilaMax = 5;
+        public int FilaMax = 10;
 
         /// <summary>Minutos para conferir o pedido.</summary>
-        public int MinutosConferir = 1;
+        public int MinutosConferir = 2;
 
         /// <summary>Minutos perdidos a cada código errado.</summary>
         public int MinutosCodigoErrado = 1;
@@ -281,6 +281,37 @@ namespace Entregador.Core
             }
 
             return BalcaoSituacao.PedidoPronto;
+        }
+
+        /// <summary>A fala da atendente no ponto da espera (progresso de 0 a 1): começo, meio e fim, para a espera não ficar muda.</summary>
+        public string FalaEspera(double progresso)
+        {
+            if (Passo != RetiradaPasso.Espera)
+            {
+                return Fala;
+            }
+
+            int i = progresso < 0.34 ? 0 : progresso < 0.67 ? 1 : 2;
+            int variante = Pedido.Id % 2;
+
+            if (Situacao == BalcaoSituacao.Lotado)
+            {
+                string[][] fila =
+                {
+                    new[] { "Beleza, entra na fila aí.", "Tá andando, tem mais dois na sua frente.", "Falta pouco, é o próximo!" },
+                    new[] { "Hoje o movimento tá pesado, aguenta aí.", "A chapa tá cheia, mas já já chega a sua vez.", "Sua vez, moço!" },
+                };
+
+                return fila[variante][i];
+            }
+
+            string[][] cozinha =
+            {
+                new[] { "Pode esperar aqui do lado, já já fica pronto.", "Tá na chapa ainda, uns minutinhos.", "Quase pronto, só fechando a sacola!" },
+                new[] { "Entrou agora na cozinha, vai levar um tempinho.", "O cozinheiro falou que tá terminando.", "Pronto! Só lacrar e já te entrego." },
+            };
+
+            return cozinha[variante][i];
         }
 
         // ---------- Escolhas ----------

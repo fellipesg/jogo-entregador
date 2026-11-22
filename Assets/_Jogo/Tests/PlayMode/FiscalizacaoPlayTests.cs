@@ -343,9 +343,7 @@ namespace Entregador.Game.Tests
             Assert.AreEqual(Infracao.ExcessoVelocidadeAte20, report.Capturas[0]);
 
             yield return PickUpOrder(Flow);
-            TeleportNear(Flow, Flow.CurrentPlan.Customer);
-            yield return new WaitForSeconds(0.2f);
-            Assert.AreEqual(FlowState.AtDoor, Flow.State);
+            yield return ArriveAtCustomer(Flow);
             Flow.Deliver();
             Assert.AreEqual(1, Flow.Session.MultasPendentes.Count, "A multa de radar fica na fila do Core.");
             Assert.Greater(Flow.Session.MultasPendentes[0].DiaChegada, Flow.Session.Day);
@@ -517,7 +515,7 @@ namespace Entregador.Game.Tests
             Assert.AreEqual(FlowState.DrivingToRestaurant, Flow.State);
             Assert.IsFalse(Flow.Bike.Locked);
             Assert.IsTrue(Flow.Tracker.Running);
-            Assert.GreaterOrEqual(Flow.Tracker.ElapsedSeconds, 10f * Flow.Tuning.SecondsPerGameMinute - 0.1f, "O atraso da parada soma ao tempo da corrida.");
+            Assert.GreaterOrEqual(Flow.Tracker.ElapsedSeconds, 10f * Flow.SegundosPorMinuto - 0.1f, "O atraso da parada soma ao tempo da corrida.");
         }
 
         // ---------- Blitz ----------

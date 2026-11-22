@@ -98,10 +98,22 @@ namespace Entregador.Game
             Radio = RadioPlayer.Garantir(gameObject);
         }
 
-        /// <summary>Oferta recusada ou vencida: o jingle de "perdido" (aceitar não passa por aqui).</summary>
+        /// <summary>Oferta recusada ou vencida (parada ou no meio da corrida): o jingle de "perdido".</summary>
         private void OnOfferRefused()
         {
             Jingle(SoundBank.Perdido(AppName()), 0.6f, 1f);
+        }
+
+        /// <summary>Uma oferta apareceu (parada ou no meio da corrida): o sininho espera o "perdido" anterior terminar.</summary>
+        private void OnOfertaApareceu()
+        {
+            _pendingOfferChime = true;
+        }
+
+        /// <summary>Oferta aceita (parada, no meio da corrida ou pedido duplo): o jingle de "aceito".</summary>
+        private void OnOfertaAceita()
+        {
+            Jingle(SoundBank.Aceito(AppName()), 0.6f, 0.5f);
         }
 
         private void OnDestroy()
@@ -109,6 +121,8 @@ namespace Entregador.Game
             if (_subscribedFlow != null)
             {
                 _subscribedFlow.OfferRefused -= OnOfferRefused;
+                _subscribedFlow.OfertaApareceu -= OnOfertaApareceu;
+                _subscribedFlow.OfertaAceita -= OnOfertaAceita;
             }
 
             if (Instance == this)
@@ -213,6 +227,8 @@ namespace Entregador.Game
             {
                 _subscribedFlow = _flow;
                 _flow.OfferRefused += OnOfferRefused;
+                _flow.OfertaApareceu += OnOfertaApareceu;
+                _flow.OfertaAceita += OnOfertaAceita;
             }
 
             if (_flow != null)
@@ -288,16 +304,6 @@ namespace Entregador.Game
                 }
                 else
                 {
-                    if (state == FlowState.Offer && (_lastState != FlowState.Offer || !ReferenceEquals(_lastOrder, _flow.CurrentOrder)))
-                    {
-                        _pendingOfferChime = true;
-                    }
-
-                    if (_lastState == FlowState.Offer && state == FlowState.DrivingToRestaurant)
-                    {
-                        Jingle(SoundBank.Aceito(AppName()), 0.6f, 0.5f);
-                    }
-
                     if (state == FlowState.Abordagem && _lastState != FlowState.Abordagem)
                     {
                         PlayUi(SoundBank.Whoop, 0.7f);

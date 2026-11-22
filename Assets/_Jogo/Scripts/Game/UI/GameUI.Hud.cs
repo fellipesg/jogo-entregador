@@ -54,6 +54,7 @@ namespace Entregador.Game
         private RectTransform _iTempoFill;
         private TextMeshProUGUI _iPaga;
         private TextMeshProUGUI _iGorjeta;
+        private TextMeshProUGUI _iProximo;
         private TextMeshProUGUI _iSaldo;
         private TextMeshProUGUI _iDia;
         private TextMeshProUGUI _iEntregas;
@@ -91,6 +92,7 @@ namespace Entregador.Game
             _painelView.SetEstado(Painel);
 
             BuildCornerButtons(_hudRoot.transform);
+            BuildOfertasHud(_hudRoot.transform);
         }
 
         /// <summary>
@@ -149,6 +151,7 @@ namespace Entregador.Game
             maskImage.type = Image.Type.Sliced;
             maskImage.raycastTarget = false;
             mask.gameObject.AddComponent<Mask>().showMaskGraphic = false;
+            _minimapMask = mask;
 
             var mapObject = new GameObject("Mapa", typeof(RectTransform), typeof(RawImage));
             mapObject.transform.SetParent(mask, false);
@@ -305,6 +308,9 @@ namespace Entregador.Game
             Caps(a, "GANHO", -322f, UiTema.TextoFraco);
             _iPaga = Field(a, -342f, 32f, UiTema.Sucesso, FontStyles.Bold);
             _iGorjeta = Field(a, -382f, 17f, UiTema.TextoSuave);
+            _iProximo = Field(a, -408f, 15f, UiTema.Texto);
+            _iProximo.textWrappingMode = TextWrappingModes.Normal;
+            _iProximo.rectTransform.sizeDelta = new Vector2(w, 34f);
 
             RectTransform b = UiKit.Rect("ColunaTurno", _shadeRoot);
             UiKit.Place(b, new Vector2(0f, 1f), new Vector2(cols[1], 0f), new Vector2(w, ShadeHeight));
@@ -666,9 +672,10 @@ namespace Entregador.Game
             InfoPainel i = _info;
             bool hasOrder = !string.IsNullOrEmpty(i.Etapa);
             _iEtapa.text = hasOrder ? (i.Etapa == "Retirar" ? "Retirar o pedido em" : "Entregar para") : "Sem pedido em andamento";
+            _iProximo.text = string.IsNullOrEmpty(i.Proximo) ? string.Empty : "<color=#FFB021><b>PRÓXIMO PEDIDO</b></color>  " + i.Proximo;
             string name = i.Etapa == "Entregar" && !string.IsNullOrEmpty(i.Cliente) ? i.Cliente : i.Restaurante;
             string other = i.Etapa == "Retirar" && !string.IsNullOrEmpty(i.Cliente) ? "<color=#9AA4B2>depois para " + i.Cliente + "</color>" : string.Empty;
-            _iRota.text = hasOrder ? name + (other.Length > 0 ? "\n<size=18><b>" + other + "</b></size>" : string.Empty) : "Modo livre";
+            _iRota.text = hasOrder ? name + (other.Length > 0 ? "\n<size=18><b>" + other + "</b></size>" : string.Empty) : (string.IsNullOrEmpty(i.Modo) ? "Modo livre" : i.Modo);
             _iEndereco.text = i.Endereco ?? string.Empty;
             _iDist.text = hasOrder ? FormatDistance(i.DistanciaM) + " restantes" : string.Empty;
             _iTempo.text = hasOrder ? FormatTime(i.DecorridoS) + " de " + FormatTime(i.EsperadoS) : "-";

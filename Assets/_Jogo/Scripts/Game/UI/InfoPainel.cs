@@ -26,5 +26,11 @@ namespace Entregador.Game
         public string MotoStatus = string.Empty;
         public string CnhStatus = string.Empty;
         public float Comida = 1f;
+
+        /// <summary>Texto do estado sem pedido (por exemplo "Online: procurando pedidos"); vazio mostra "Modo livre".</summary>
+        public string Modo = string.Empty;
+
+        /// <summary>Pedido aceito no meio da corrida e esperando a entrega atual acabar; vazio = nenhum.</summary>
+        public string Proximo = string.Empty;
     }
 }
