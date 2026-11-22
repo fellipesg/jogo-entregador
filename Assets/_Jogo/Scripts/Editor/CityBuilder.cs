@@ -58,6 +58,7 @@ namespace Entregador.Editor
             PaintZones(map);
             BuildGround(world.transform, map);
             _graph = BuildGraph(world);
+            _graph.BlockOutside(GraphLimit);
             _trafficLoops = FindTrafficLoops();
 
             // Pavimento: asfalto, faixas e travessias, calçadas e pisos.
@@ -95,6 +96,7 @@ namespace Entregador.Editor
             }
 
             BuildProps(props, new System.Random(55), avoid, map);
+            BlockGraphWhereTheCityIsClosed();
             FinishBatches(blocks);
             BuildFiscalizacao(world.transform, spawn, restaurants, customers);
 
@@ -354,6 +356,23 @@ namespace Entregador.Editor
             importer.SaveAndReimport();
 
             return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        }
+
+        /// <summary>
+        /// O grafo tem de bater com o que dá para dirigir: a cidade além das paredes (depois das barreiras de obra) e todo trecho que
+        /// passa por uma barreira ficam bloqueados, e o GPS nunca manda passar por eles.
+        /// </summary>
+        private static void BlockGraphWhereTheCityIsClosed()
+        {
+            int outside = _graph.BlockOutside(GraphLimit);
+            int near = 0;
+
+            foreach (ViaBloqueada blocker in Object.FindObjectsByType<ViaBloqueada>(FindObjectsInactive.Include))
+            {
+                near += _graph.BlockNear(blocker.Centro, ViaBloqueada.Raio);
+            }
+
+            Debug.Log($"[CityBuilder] Trechos bloqueados no grafo: {outside} fora da área jogável e {near} junto de barreiras de obra.");
         }
 
         private static RouteGuide BuildRoute(RoadGraph graph, ArcadeBikeController bike)

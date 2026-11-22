@@ -307,7 +307,9 @@ namespace Entregador.Game.Tests
             SpeedCamera[] radars = Object.FindObjectsByType<SpeedCamera>(FindObjectsSortMode.None);
             Assert.GreaterOrEqual(radars.Length, 6, "A cidade deveria ter de 6 a 8 radares.");
             Assert.LessOrEqual(radars.Length, 8);
-            SpeedCamera radar = radars[0];
+            System.Array.Sort(radars, (a, b) => string.CompareOrdinal(a.transform.parent.name, b.transform.parent.name));
+            SpeedCamera radar = System.Array.Find(radars, r => r.LimitKmh == 50);
+            Assert.IsNotNull(radar, "Os números abaixo (54 e 65 km/h) valem para um radar de limite 50.");
             Vector3 forward = radar.transform.forward;
             Vector3 start = radar.transform.position - forward * 8f;
             start.y = 0.1f;
@@ -338,8 +340,7 @@ namespace Entregador.Game.Tests
             Assert.AreEqual(1, report.Capturas.Count);
             Assert.AreEqual(Infracao.ExcessoVelocidadeAte20, report.Capturas[0]);
 
-            TeleportNear(Flow, Flow.CurrentPlan.Restaurant);
-            yield return new WaitForSeconds(0.2f);
+            yield return PickUpOrder(Flow);
             TeleportNear(Flow, Flow.CurrentPlan.Customer);
             yield return new WaitForSeconds(0.2f);
             Assert.AreEqual(FlowState.AtDoor, Flow.State);

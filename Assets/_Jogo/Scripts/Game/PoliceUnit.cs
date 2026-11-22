@@ -51,6 +51,18 @@ namespace Entregador.Game
         private float _yaw;
         private float _speed;
         private PoliceMode _modeBeforeChase;
+        private ArcadeBikeController _watchedBike;
+        private float _watchedAt = -10f;
+        private bool _braking;
+
+        /// <summary>Distância (m) que a viatura mantém atrás da moto numa abordagem (centro a centro).</summary>
+        public const float StandoffMeters = 7f;
+
+        /// <summary>Menor distância (m) entre a viatura e a moto, em qualquer modo: a viatura nunca avança para dentro disso.</summary>
+        public const float MinBikeDistance = 4.6f;
+
+        /// <summary>A viatura chegou no ponto de parada atrás da moto (ou já está parada perto dela).</summary>
+        public bool ReachedStandoff => _target != null && GapToTarget <= StandoffMeters + 1.5f;
 
         /// <summary>Todas as viaturas ativas (a monitoria de trânsito procura quem está vendo a moto).</summary>
         public static IReadOnlyList<PoliceUnit> Active => All;
@@ -118,6 +130,7 @@ namespace Entregador.Game
             _bike = null;
             TeleportTo(_homePosition, _homeRotation);
             _mode = PoliceMode.Parada;
+            _braking = false;
             _speed = 0f;
             SetLights(true);
         }
@@ -146,6 +159,7 @@ namespace Entregador.Game
             _target = bike.transform;
             _willCatch = willCatch;
             _mode = PoliceMode.Perseguicao;
+            _braking = false;
             _routeTimer = 0f;
             SetLights(true);
         }
@@ -161,6 +175,7 @@ namespace Entregador.Game
         {
             _target = null;
             _bike = null;
+            _braking = false;
             _speed = 0f;
 
             if (_modeBeforeChase == PoliceMode.Patrulha && _waypoints.Length >= 2)
@@ -179,8 +194,8 @@ namespace Entregador.Game
         /// <summary>A viatura alcançou a moto e para junto dela (apresentação do "pego").</summary>
         public void HaltBehind()
         {
-            _speed = 0f;
             _mode = PoliceMode.Parada;
+            _braking = true;
         }
 
         private void TeleportTo(Vector3 position, Quaternion rotation)
@@ -259,6 +274,33 @@ namespace Entregador.Game
             {
                 Chase(Time.fixedDeltaTime);
             }
+            else if (_mode == PoliceMode.Parada && _braking)
+            {
+                // Freia até parar (sem teletransporte) e fica parada até a abordagem acabar.
+                Drive(Vector3.zero, 0f, 0f, 16f, Time.fixedDeltaTime);
+
+                if (_speed < 0.01f)
+                {
+                    _braking = false;
+                }
+            }
+        }
+
+        /// <summary>A moto do jogador, para a distância de segurança (a viatura de blitz e a de ronda também não a empurram).</summary>
+        private ArcadeBikeController WatchedBike()
+        {
+            if (_bike != null)
+            {
+                return _bike;
+            }
+
+            if (_watchedBike == null && Time.time - _watchedAt > 1f)
+            {
+                _watchedAt = Time.time;
+                _watchedBike = FindAnyObjectByType<ArcadeBikeController>();
+            }
+
+            return _watchedBike;
         }
 
         private void Patrol(float dt)
@@ -284,6 +326,19 @@ namespace Entregador.Game
         private bool BlockedAhead()
         {
             Vector3 forward = Quaternion.Euler(0f, _yaw, 0f) * Vector3.forward;
+            ArcadeBikeController bike = WatchedBike();
+
+            if (bike != null)
+            {
+                Vector3 toBike = Flat(bike.transform.position - _body.position);
+                float alongBike = Vector3.Dot(toBike, forward);
+                float lateralBike = Mathf.Abs(toBike.x * forward.z - toBike.z * forward.x);
+
+                if (alongBike > 0f && alongBike < 12f && lateralBike < 2.6f)
+                {
+                    return true;
+                }
+            }
 
             foreach (TrafficLoop car in TrafficLoopRegistry())
             {
@@ -354,8 +409,31 @@ namespace Entregador.Game
 
             if (_willCatch)
             {
-                // Vai alcançar: sempre um pouco mais rápida que a moto, e desacelera ao chegar perto.
-                wanted = gap < 9f ? playerSpeed + 3f : Mathf.Min(34f, Mathf.Max(_chaseSpeed, playerSpeed + 5f));
+                // Vai alcançar: some até a moto, casa a velocidade e para a StandoffMeters atrás dela, de lado para o meio-fio.
+                Vector3 bikeForward = Flat(_target.forward).normalized;
+                Vector3 bikeRight = new Vector3(bikeForward.z, 0f, -bikeForward.x);
+                Vector3 stopPoint = _target.position - bikeForward * StandoffMeters + bikeRight * 1.8f;
+
+                if (gap < 22f)
+                {
+                    aim = stopPoint;
+                }
+
+                float room = Mathf.Max(0f, gap - StandoffMeters);
+                wanted = Mathf.Min(34f, playerSpeed + Mathf.Sqrt(2f * 11f * room));
+
+                if (gap <= StandoffMeters + 0.5f && playerSpeed < 1.5f)
+                {
+                    wanted = 0f;
+                }
+
+                // Parada ao lado: a frente aponta um pouco para o meio-fio, como numa abordagem de verdade.
+                if (_speed < 0.4f && gap < StandoffMeters + 3f)
+                {
+                    float bikeYaw = Mathf.Atan2(bikeForward.x, bikeForward.z) * Mathf.Rad2Deg;
+                    _yaw = Mathf.MoveTowardsAngle(_yaw, bikeYaw + 14f, 40f * dt);
+                    aim = _body.position;
+                }
             }
             else
             {
@@ -376,7 +454,25 @@ namespace Entregador.Game
 
             _speed = Mathf.MoveTowards(_speed, wantedSpeed, acceleration * dt);
             Vector3 forward = Quaternion.Euler(0f, _yaw, 0f) * Vector3.forward;
-            _body.MovePosition(_body.position + forward * (_speed * dt));
+            Vector3 next = _body.position + forward * (_speed * dt);
+
+            // Nunca encosta na moto: se o passo a deixaria mais perto que MinBikeDistance, a viatura não anda (nada de empurrar).
+            ArcadeBikeController bike = WatchedBike();
+
+            if (bike != null)
+            {
+                Vector3 bikeAt = bike.transform.position;
+                float now = Flat(bikeAt - _body.position).magnitude;
+                float after = Flat(bikeAt - next).magnitude;
+
+                if (after < MinBikeDistance && after < now)
+                {
+                    next = _body.position;
+                    _speed = 0f;
+                }
+            }
+
+            _body.MovePosition(next);
             _body.MoveRotation(Quaternion.Euler(0f, _yaw, 0f));
         }
 

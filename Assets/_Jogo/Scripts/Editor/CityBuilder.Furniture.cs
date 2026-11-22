@@ -788,6 +788,10 @@ namespace Entregador.Editor
             Vector3 inward3 = Geo.V3(inward);
             Vector3 sideways = Vector3.Cross(inward3, Vector3.up);
             var frame = new Frame(Geo.V3(center) - sideways * halfWidth, inward3);
+            var blocker = new GameObject("Bloqueio_Obra");
+            blocker.transform.SetParent(parent, false);
+            blocker.transform.position = Geo.V3(center);
+            blocker.AddComponent<ViaBloqueada>();
             MeshBatch b = BuildBatch(Geo.V3(center));
             float total = halfWidth * 2f;
             int boards = Mathf.CeilToInt(total / 1.2f);

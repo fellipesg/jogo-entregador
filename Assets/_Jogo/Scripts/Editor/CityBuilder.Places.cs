@@ -69,11 +69,12 @@ namespace Entregador.Editor
             var random = new System.Random(7);
             var pool = new List<(Vector3 position, string street, float distance)>();
 
-            foreach (GraphEdge edge in GraphEdges)
+            for (int edgeIndex = 0; edgeIndex < GraphEdges.Count; edgeIndex++)
             {
+                GraphEdge edge = GraphEdges[edgeIndex];
                 Road r = edge.Road;
 
-                if (r.Kind == RoadKind.Primary || r.Kind == RoadKind.Service || r.BusLeft + r.BusRight > 0.5f)
+                if (_graph.IsBlocked(edgeIndex) || r.Kind == RoadKind.Primary || r.Kind == RoadKind.Service || r.BusLeft + r.BusRight > 0.5f)
                 {
                     continue;
                 }
@@ -102,7 +103,7 @@ namespace Entregador.Editor
                     }
 
                     Vector3 position = Geo.V3(p2);
-                    bool close = false;
+                    bool close = Mathf.Max(Mathf.Abs(position.x), Mathf.Abs(position.z)) > GraphLimit - 1f;
 
                     foreach (Place restaurant in restaurants)
                     {

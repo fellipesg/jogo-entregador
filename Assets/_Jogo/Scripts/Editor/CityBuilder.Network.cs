@@ -33,6 +33,9 @@ namespace Entregador.Editor
             /// <summary>Sentido único; Reverse quando o sentido é contrário à ordem dos pontos (oneway=-1).</summary>
             public bool Oneway;
             public bool Reverse;
+
+            /// <summary>Rotatória (junction=roundabout).</summary>
+            public bool Roundabout;
             public float LaneWidth;
 
             /// <summary>Limite de velocidade em km/h (tag maxspeed do OSM; 0 se não há).</summary>
@@ -286,6 +289,7 @@ namespace Entregador.Editor
                 Ids = way.NodeIds,
                 Oneway = isOneway && kind != RoadKind.Pedestrian,
                 Reverse = oneway == "-1",
+                Roundabout = way.Is("junction", "roundabout"),
                 MaxSpeed = Entregador.Core.LimitesDeVelocidade.LerTag(way.Tag("maxspeed")),
                 LaneWidth = laneWidth,
                 GenHalf = general * 0.5f,
@@ -1042,6 +1046,80 @@ namespace Entregador.Editor
                 }
             }
 
+            // Trechos que cruzam o limite da área jogável (onde ficam as barreiras de obra) são partidos no limite: a parte de dentro
+            // continua livre (acaba num beco sem saída antes da barreira) e a de fora é bloqueada logo depois de montar o grafo.
+            int originalEdges = from.Count;
+
+            for (int e = 0; e < originalEdges; e++)
+            {
+                Vector3 pa = positions[from[e]];
+                Vector3 pb = positions[to[e]];
+                bool outA = BeyondGraphLimit(pa);
+                bool outB = BeyondGraphLimit(pb);
+
+                if (outA == outB)
+                {
+                    continue;
+                }
+
+                Vector3 inside = outA ? pb : pa;
+                Vector3 outside = outA ? pa : pb;
+                float lo = 0f;
+                float hi = 1f;
+
+                for (int i = 0; i < 24; i++)
+                {
+                    float mid = (lo + hi) * 0.5f;
+
+                    if (BeyondGraphLimit(Vector3.Lerp(inside, outside, mid)))
+                    {
+                        hi = mid;
+                    }
+                    else
+                    {
+                        lo = mid;
+                    }
+                }
+
+                int cut = positions.Count;
+                positions.Add(Vector3.Lerp(inside, outside, lo));
+                int outerFrom = from[e];
+                int outerTo = to[e];
+                int innerFrom = from[e];
+                int innerTo = to[e];
+
+                if (outA)
+                {
+                    from[e] = cut;
+                    outerTo = cut;
+                    innerFrom = cut;
+                }
+                else
+                {
+                    to[e] = cut;
+                    outerFrom = cut;
+                    innerTo = cut;
+                }
+
+                // O trecho original (e) fica com a parte de dentro; a de fora vira um trecho novo, igual em tudo.
+                from.Add(outerFrom);
+                to.Add(outerTo);
+                oneway.Add(oneway[e]);
+                roadOf.Add(roadOf[e]);
+
+                if (outA)
+                {
+                    // e: (cut -> dentro) é a parte de dentro; o novo (fora -> cut) é a de fora.
+                    from[from.Count - 1] = outerFrom;
+                    to[to.Count - 1] = cut;
+                }
+                else
+                {
+                    from[from.Count - 1] = cut;
+                    to[to.Count - 1] = outerTo;
+                }
+            }
+
             bool[] keep = LargestComponent(positions.Count, from, to);
             var remap = new int[positions.Count];
             var nodes = new List<Vector3>();
@@ -1060,6 +1138,8 @@ namespace Entregador.Editor
             var edgeTo = new List<int>();
             var edgeOneway = new List<bool>();
             var edgeLimit = new List<int>();
+            var edgeName = new List<string>();
+            var edgeRound = new List<bool>();
             GraphEdges.Clear();
 
             for (int e = 0; e < from.Count; e++)
@@ -1073,15 +1153,22 @@ namespace Entregador.Editor
                 edgeTo.Add(remap[to[e]]);
                 edgeOneway.Add(oneway[e]);
                 edgeLimit.Add(SpeedLimitOf(roadOf[e].road));
+                edgeName.Add(roadOf[e].road.Name ?? string.Empty);
+                edgeRound.Add(roadOf[e].road.Roundabout);
                 GraphEdges.Add(new GraphEdge { Road = roadOf[e].road, Segment = roadOf[e].segment, From = remap[from[e]], To = remap[to[e]] });
             }
 
             var graph = world.AddComponent<RoadGraph>();
-            graph.Configure(nodes.ToArray(), edgeFrom.ToArray(), edgeTo.ToArray(), edgeOneway.ToArray(), edgeLimit.ToArray());
+            graph.Configure(nodes.ToArray(), edgeFrom.ToArray(), edgeTo.ToArray(), edgeOneway.ToArray(), edgeLimit.ToArray(), edgeName.ToArray(), edgeRound.ToArray());
             Debug.Log($"[CityBuilder] Grafo: {nodes.Count} nós, {edgeFrom.Count} trechos ({positions.Count - nodes.Count} nós descartados fora da componente principal).");
 
             return graph;
         }
+
+        /// <summary>Limite (m) a partir do qual a rua já é a cidade fechada além das barreiras de obra.</summary>
+        public const float GraphLimit = PlayableHalf - 4.5f;
+
+        private static bool BeyondGraphLimit(Vector3 p) => Mathf.Max(Mathf.Abs(p.x), Mathf.Abs(p.z)) > GraphLimit;
 
         /// <summary>Marca os nós da maior componente conexa do grafo (ignorando o sentido único: a mão errada só custa mais, não é proibida).</summary>
         private static bool[] LargestComponent(int count, List<int> from, List<int> to)

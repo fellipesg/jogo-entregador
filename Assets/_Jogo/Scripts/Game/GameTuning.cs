@@ -7,8 +7,8 @@ namespace Entregador.Game
     /// </summary>
     public sealed class GameTuning : MonoBehaviour
     {
-        [Tooltip("Quilômetros do jogo por metro do mundo. 0,0042 faz 3,5 km virarem cerca de 830 m de rua (no mapa do OSM as rotas entre restaurantes e endereços chegam a ~1.200 m; 1,5 a 5,5 km cabem na faixa).")]
-        public float WorldToGameKm = 0.0042f;
+        [Tooltip("Quilômetros do jogo por metro do mundo. 0,0047 faz 3,5 km virarem cerca de 745 m de rua (com o grafo fechado nas barreiras de obra, as rotas entre restaurantes e endereços chegam a ~1.100 m; 1,5 a 5,5 km cabem na faixa).")]
+        public float WorldToGameKm = 0.0047f;
 
         [Tooltip("Velocidade de referência (m/s) para calcular o tempo previsto da corrida. Menor que a velocidade máxima da moto (13 m/s) porque há esquinas, buracos e trânsito.")]
         public float ReferenceSpeed = 7f;

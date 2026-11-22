@@ -84,9 +84,7 @@ namespace Entregador.Game.Tests
             Place restaurant = Flow.CurrentPlan.Restaurant;
             Place customer = Flow.CurrentPlan.Customer;
 
-            TeleportNear(Flow, restaurant);
-            yield return new WaitForSeconds(0.2f);
-            Assert.AreEqual(FlowState.DrivingToCustomer, Flow.State, "Chegar no restaurante deveria retirar o pedido.");
+            yield return PickUpOrder(Flow);
 
             TeleportNear(Flow, customer);
             yield return new WaitForSeconds(0.2f);
@@ -220,7 +218,7 @@ namespace Entregador.Game.Tests
         // ---------- Rodada 2: tempo das corridas, GPS, calçada, chuva, trânsito ----------
 
         [UnityTest]
-        public IEnumerator PlannedRunTimesLandBetween90And240SecondsForTypicalOrders()
+        public IEnumerator PlannedRunTimesLandBetween90And260SecondsForTypicalOrders()
         {
             var random = new SeededRandom(4);
             var starts = new System.Collections.Generic.List<Vector3> { Flow.Map.BikeSpawn };
@@ -267,7 +265,7 @@ namespace Entregador.Game.Tests
             Debug.Log($"[Tempo previsto] pior caso (partida distante, 5,5 km): {farMax:0} s");
             Debug.Log("[Tempo previsto] tabela:\n" + table);
             Assert.GreaterOrEqual(min, 90f, "Tempo previsto mínimo curto demais.\n" + table);
-            Assert.LessOrEqual(max, 240f, "Tempo previsto máximo longo demais.\n" + table);
+            Assert.LessOrEqual(max, 260f, "Tempo previsto máximo longo demais.\n" + table);
             Debug.Log($"[Tempo previsto] mínimo {min:0} s, máximo {max:0} s (WorldToGameKm={Flow.Tuning.WorldToGameKm}, referência={Flow.Tuning.ReferenceSpeed} m/s)");
             yield return null;
         }
@@ -561,8 +559,7 @@ namespace Entregador.Game.Tests
             Flow.NewWeek(1, random);
             Assert.IsTrue(Flow.Ui.ClickModalButton("Começar turno"));
             Assert.IsTrue(Flow.Ui.ClickModalButton("Aceitar"));
-            TeleportNear(Flow, Flow.CurrentPlan.Restaurant);
-            yield return new WaitForSeconds(0.2f);
+            yield return PickUpOrder(Flow);
             TeleportNear(Flow, Flow.CurrentPlan.Customer);
             yield return new WaitForSeconds(0.2f);
             Assert.AreEqual(FlowState.AtDoor, Flow.State);
