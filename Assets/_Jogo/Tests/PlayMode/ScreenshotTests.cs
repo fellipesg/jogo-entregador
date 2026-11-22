@@ -12,8 +12,8 @@ namespace Entregador.Game.Tests
     /// </summary>
     public sealed partial class ScreenshotTests : SceneFixture
     {
-        private const int Width = 1600;
-        private const int Height = 900;
+        private const int Width = 1920;
+        private const int Height = 1080;
 
         private static string Dir
         {
@@ -528,9 +528,19 @@ namespace Entregador.Game.Tests
             RenderTexture previous = camera.targetTexture;
 
             RenderMode oldMode = RenderMode.ScreenSpaceOverlay;
+            UnityEngine.UI.CanvasScaler scaler = canvas != null ? canvas.GetComponent<UnityEngine.UI.CanvasScaler>() : null;
+            UnityEngine.UI.CanvasScaler.ScaleMode oldScale = scaler != null ? scaler.uiScaleMode : UnityEngine.UI.CanvasScaler.ScaleMode.ConstantPixelSize;
+            float oldFactor = scaler != null ? scaler.scaleFactor : 1f;
 
             if (withUi && canvas != null)
             {
+                if (scaler != null)
+                {
+                    // O canvas mede o tamanho da tela do jogo, não o da textura: fixa a escala para 1920x1080.
+                    scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ConstantPixelSize;
+                    scaler.scaleFactor = Height / 1080f;
+                }
+
                 oldMode = canvas.renderMode;
                 canvas.renderMode = RenderMode.ScreenSpaceCamera;
                 canvas.worldCamera = camera;
@@ -554,6 +564,12 @@ namespace Entregador.Game.Tests
             if (withUi && canvas != null)
             {
                 canvas.renderMode = oldMode;
+
+                if (scaler != null)
+                {
+                    scaler.uiScaleMode = oldScale;
+                    scaler.scaleFactor = oldFactor;
+                }
             }
 
             Object.Destroy(rt);

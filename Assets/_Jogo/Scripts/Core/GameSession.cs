@@ -446,7 +446,7 @@ namespace Entregador.Core
         /// <summary>A polícia viu uma infração (flagrante): abordagem com a infração no auto.</summary>
         public Abordagem ReportarFlagrante(Infracao infracao)
         {
-            EnsureShiftActive();
+            EnsureDayOpen();
 
             return IniciarAbordagem(infracao);
         }
@@ -457,7 +457,7 @@ namespace Entregador.Core
         /// </summary>
         public AbordagemOutcome ResolverAbordagem(Abordagem abordagem, AbordagemChoice choice)
         {
-            EnsureShiftActive();
+            EnsureDayOpen();
 
             if (abordagem == null || abordagem != _abordagemAtual)
             {
@@ -750,6 +750,17 @@ namespace Entregador.Core
             if (IsWeekOver)
             {
                 throw new InvalidOperationException("A semana acabou.");
+            }
+        }
+
+        /// <summary>Dia em andamento, com ou sem turno: a polícia também para quem anda livre (exploração livre).</summary>
+        private void EnsureDayOpen()
+        {
+            EnsureWeekRunning();
+
+            if (_dayClosed)
+            {
+                throw new InvalidOperationException("O dia de hoje já foi encerrado.");
             }
         }
 
