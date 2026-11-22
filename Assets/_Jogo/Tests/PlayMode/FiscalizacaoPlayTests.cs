@@ -483,6 +483,8 @@ namespace Entregador.Game.Tests
             Assert.IsNotNull(patrol, "A cidade tem uma viatura de ronda.");
             Assert.IsTrue(patrol.HasPatrolRoute);
 
+            // Os entregadores parados (PontosDirector) também bloqueiam a visão; este teste é do largo aberto.
+            Object.FindFirstObjectByType<PontosDirector>().gameObject.SetActive(false);
             Vector3 spot = View("largo").Position;
             Flow.Bike.Teleport(new Vector3(spot.x, 0.1f, spot.z), 0f);
             patrol.transform.position = spot + new Vector3(0f, 0f, 14f);
