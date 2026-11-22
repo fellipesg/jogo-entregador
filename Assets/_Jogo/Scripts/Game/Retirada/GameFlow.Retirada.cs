@@ -17,7 +17,6 @@ namespace Entregador.Game
         private const string OlharCodigo = "Olhar o código no app";
 
         private BalcaoUI _balcao;
-        private NavegacaoCartao _navCard;
         private Retirada _retirada;
         private float _waitTotal;
         private float _waitElapsed;
@@ -27,8 +26,6 @@ namespace Entregador.Game
         public Retirada Retirada => _retirada;
 
         public BalcaoUI Balcao => _balcao;
-
-        public NavegacaoCartao CartaoNavegacao => _navCard;
 
         /// <summary>Se definida, a próxima retirada começa nesta situação (testes e QA); senão é sorteada.</summary>
         public BalcaoSituacao? SituacaoForcada { get; set; }
@@ -43,8 +40,20 @@ namespace Entregador.Game
             holder.transform.SetParent(transform, false);
             _balcao = holder.AddComponent<BalcaoUI>();
             _balcao.Build();
-            _navCard = holder.AddComponent<NavegacaoCartao>();
-            _navCard.Build(_route);
+        }
+
+        /// <summary>Fora de uma corrida (menu, exploração livre) não há retirada nem balcão na tela.</summary>
+        private void ClearRetirada()
+        {
+            _retirada = null;
+
+            if (_balcao != null)
+            {
+                _balcao.HideDialogue();
+                _balcao.HidePrompt();
+                _balcao.HideHint();
+                _balcao.SetCode(null);
+            }
         }
 
         /// <summary>Um pedido aceito: nasce a retirada, com o código que o app mostra.</summary>

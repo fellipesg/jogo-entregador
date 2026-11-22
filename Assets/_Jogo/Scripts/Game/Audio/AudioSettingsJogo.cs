@@ -11,6 +11,9 @@ namespace Entregador.Game
         Ambiente,
         Ui,
         Radio,
+
+        /// <summary>Voz e ping do GPS (PlayerPrefs "vol_gps", padrão 0,8).</summary>
+        Gps,
     }
 
     /// <summary>
@@ -21,8 +24,9 @@ namespace Entregador.Game
     {
         private const string Prefix = "jogo.audio.";
 
-        private static readonly float[] BusVolume = { 1f, 1f, 1f, 1f, 1f };
-        private static readonly string[] BusNames = { "vol_motor", "vol_transito", "vol_ambiente", "vol_ui", "vol_radio" };
+        private static readonly float[] BusDefault = { 1f, 1f, 1f, 1f, 1f, 0.8f };
+        private static readonly float[] BusVolume = { 1f, 1f, 1f, 1f, 1f, 0.8f };
+        private static readonly string[] BusNames = { "vol_motor", "vol_transito", "vol_ambiente", "vol_ui", "vol_radio", "vol_gps" };
         private static float _master = 1f;
         private static bool _loaded;
 
@@ -37,6 +41,11 @@ namespace Entregador.Game
 
         /// <summary>Multiplicador de ducking do rádio (baixa sob o jingle de pedido e a sirene).</summary>
         public static float DuckRadio { get; set; } = 1f;
+
+        /// <summary>Instante (tempo não escalado) até o qual o GPS está falando; o rádio abaixa enquanto isso.</summary>
+        public static float GpsFalandoAte { get; set; }
+
+        public static bool GpsFalando => Time.unscaledTime < GpsFalandoAte;
 
         public static float Master
         {
@@ -84,8 +93,10 @@ namespace Entregador.Game
 
             for (int i = 0; i < BusVolume.Length; i++)
             {
-                BusVolume[i] = 1f;
+                BusVolume[i] = BusDefault[i];
             }
+
+            GpsFalandoAte = 0f;
 
             DuckAmbiente = 1f;
             DuckTransito = 1f;
@@ -105,7 +116,7 @@ namespace Entregador.Game
 
             for (int i = 0; i < BusVolume.Length; i++)
             {
-                BusVolume[i] = PlayerPrefs.GetFloat(BusNames[i], 1f);
+                BusVolume[i] = PlayerPrefs.GetFloat(BusNames[i], BusDefault[i]);
             }
         }
 

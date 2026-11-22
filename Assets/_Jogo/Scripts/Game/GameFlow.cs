@@ -91,6 +91,9 @@ namespace Entregador.Game
 
         public FlowState State { get; private set; }
 
+        /// <summary>A oferta foi recusada pelo jogador ou venceu o tempo (o áudio toca o jingle de "perdido").</summary>
+        public event System.Action OfferRefused;
+
         public Order CurrentOrder { get; private set; }
 
         public RunPlan CurrentPlan { get; private set; }
@@ -364,6 +367,7 @@ namespace Entregador.Game
 
             Session.Reject(CurrentOrder);
             CurrentOrder = null;
+            OfferRefused?.Invoke();
             OfferNext();
         }
 
@@ -796,6 +800,7 @@ namespace Entregador.Game
         /// <summary>Trava a moto, esconde o HUD e apaga a rota (telas de menu).</summary>
         private void EnterIdle()
         {
+            ClearRetirada();
             _bike.SetLocked(true);
             _input.ClearAll();
             _ui.SetHudVisible(false);

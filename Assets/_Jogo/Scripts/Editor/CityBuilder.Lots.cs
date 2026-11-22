@@ -464,7 +464,7 @@ namespace Entregador.Editor
             }
         }
 
-        /// <summary>Balcão de madeira e a atendente (personagem do Mixamo, sem capacete, com avental na cor do restaurante).</summary>
+        /// <summary>Balcão de madeira e a atendente (personagem do Mixamo inteiro, com avental na cor do restaurante).</summary>
         private static void BuildAttendant(RestaurantSite site, int k, Color accent)
         {
             RestaurantCounter(site, out Vector3 position, out float yaw);
@@ -472,13 +472,14 @@ namespace Entregador.Editor
             holder.transform.SetParent(_detailsRoot, false);
             holder.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
 
+            // Um personagem do Mixamo diferente por restaurante, com um tom de roupa/pele próprio e avental na cor do restaurante.
+            Personagem[] elenco = { Personagem.SeuValdir, Personagem.Jefinho, Personagem.Camila, Personagem.Marcao, Personagem.Robsao };
+            Color[] tons = { new Color(1f, 1f, 1f), new Color(0.92f, 0.88f, 0.84f), new Color(1f, 0.95f, 0.9f), new Color(0.86f, 0.9f, 0.96f) };
             PersonagensCatalogo catalogo = PersonagensBuilder.Garantir();
-            bool woman = k % 2 == 0;
-            GameObject model = catalogo != null ? catalogo.Modelo(woman ? Personagem.Camila : Personagem.Marcao) : null;
+            Personagem who = elenco[k % elenco.Length];
+            GameObject model = catalogo != null ? catalogo.Atendente(who) : null;
             var npc = holder.AddComponent<AtendenteRestaurante>();
-            npc.Configurar(model, RestaurantNames[k], accent,
-                woman ? new Color(0.72f, 0.52f, 0.42f) : new Color(0.5f, 0.35f, 0.27f),
-                woman ? new Color(0.1f, 0.06f, 0.05f) : new Color(0.06f, 0.05f, 0.05f), woman, k * 1.7f);
+            npc.Configurar(model, RestaurantNames[k], accent, tons[k % tons.Length], who != Personagem.Camila && k % 2 == 1, k * 1.7f);
 
             Material wood = CityMaterials.Lit("Balcao_Madeira", new Color(0.45f, 0.3f, 0.18f), 0.25f);
             Material top = CityMaterials.Lit("Balcao_Tampo", new Color(0.88f, 0.86f, 0.82f), 0.4f);

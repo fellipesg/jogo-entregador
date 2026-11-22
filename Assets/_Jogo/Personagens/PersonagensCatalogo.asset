@@ -18,3 +18,9 @@ MonoBehaviour:
   - {fileID: 8893804927298005005, guid: 384052132423d4e7aa66251644e65a62, type: 3}
   - {fileID: 8327696838094557465, guid: ffa720365e7db4ed9b73390b669c0000, type: 3}
   - {fileID: 8566434928202460812, guid: 1178e58998f494c1b9130f2ec1c821b3, type: 3}
+  _atendentes:
+  - {fileID: 5491157199850596290, guid: fbcc0b8d798a74d3885a04abd8563878, type: 3}
+  - {fileID: 189048083125259966, guid: c2ee4badbbecd49c2b95ef8ff7550dcd, type: 3}
+  - {fileID: 7207014169977379821, guid: 1cef19ee35cd94732b4b19200ced6884, type: 3}
+  - {fileID: 8369854648802905355, guid: dc64994c1dd5b4483922f1fceec7a88d, type: 3}
+  - {fileID: 6055162791813181458, guid: 9bc912c6d06d148eb8e95fac7f871a51, type: 3}

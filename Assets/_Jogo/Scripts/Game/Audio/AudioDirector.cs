@@ -37,6 +37,8 @@ namespace Entregador.Game
         private int _lastRadar;
         private string _lastToast = string.Empty;
         private float _jingleUntil;
+        private bool _pendingOfferChime;
+        private GameFlow _subscribedFlow;
         private float _birdTimer = 5f;
         private float _hornTimer = 25f;
         private float _passTimer = 30f;
@@ -96,8 +98,19 @@ namespace Entregador.Game
             Radio = RadioPlayer.Garantir(gameObject);
         }
 
+        /// <summary>Oferta recusada ou vencida: o jingle de "perdido" (aceitar não passa por aqui).</summary>
+        private void OnOfferRefused()
+        {
+            Jingle(SoundBank.Perdido(AppName()), 0.6f, 1f);
+        }
+
         private void OnDestroy()
         {
+            if (_subscribedFlow != null)
+            {
+                _subscribedFlow.OfferRefused -= OnOfferRefused;
+            }
+
             if (Instance == this)
             {
                 Instance = null;
@@ -196,6 +209,12 @@ namespace Entregador.Game
                 _rainEffect = FindFirstObjectByType<RainEffect>();
             }
 
+            if (_flow != null && _subscribedFlow != _flow)
+            {
+                _subscribedFlow = _flow;
+                _flow.OfferRefused += OnOfferRefused;
+            }
+
             if (_flow != null)
             {
                 _tracker = _flow.Tracker;
@@ -269,19 +288,14 @@ namespace Entregador.Game
                 }
                 else
                 {
-                    bool offerNow = state == FlowState.Offer && (_lastState != FlowState.Offer || !ReferenceEquals(_lastOrder, _flow.CurrentOrder));
-
-                    if (offerNow)
+                    if (state == FlowState.Offer && (_lastState != FlowState.Offer || !ReferenceEquals(_lastOrder, _flow.CurrentOrder)))
                     {
-                        Jingle(SoundBank.Oferta(AppName()), 0.9f, 1.5f);
+                        _pendingOfferChime = true;
                     }
-                    else if (_lastState == FlowState.Offer && state == FlowState.DrivingToRestaurant)
+
+                    if (_lastState == FlowState.Offer && state == FlowState.DrivingToRestaurant)
                     {
                         Jingle(SoundBank.Aceito(AppName()), 0.6f, 0.5f);
-                    }
-                    else if (_lastState == FlowState.Offer && (state == FlowState.DayStart || state == FlowState.ShiftSummary || state == FlowState.Blocked))
-                    {
-                        Jingle(SoundBank.Perdido(AppName()), 0.6f, 1f);
                     }
 
                     if (state == FlowState.Abordagem && _lastState != FlowState.Abordagem)
@@ -298,6 +312,13 @@ namespace Entregador.Game
                     _lastBalance = balance;
                     _lastOrder = _flow.CurrentOrder;
                 }
+            }
+
+            // O sininho do pedido espera o "perdido" da recusa terminar (a próxima oferta chega no mesmo quadro).
+            if (_pendingOfferChime && Time.unscaledTime >= _jingleUntil)
+            {
+                _pendingOfferChime = false;
+                Jingle(SoundBank.Oferta(AppName()), 0.9f, 1.5f);
             }
 
             if (_tracker != null)
@@ -343,7 +364,7 @@ namespace Entregador.Game
 
             float ambient = (modal ? 0.5f : 1f) * (jingle ? 0.45f : 1f);
             float traffic = (modal ? 0.75f : 1f) * (jingle ? 0.55f : 1f);
-            float radio = (jingle ? 0.3f : 1f) * (siren ? 0.4f : 1f);
+            float radio = (jingle ? 0.3f : 1f) * (siren ? 0.4f : 1f) * (AudioSettingsJogo.GpsFalando ? 0.3f : 1f);
             AudioSettingsJogo.DuckAmbiente = AudioMath.Smooth(AudioSettingsJogo.DuckAmbiente, ambient, dt, 0.15f);
             AudioSettingsJogo.DuckTransito = AudioMath.Smooth(AudioSettingsJogo.DuckTransito, traffic, dt, 0.15f);
             AudioSettingsJogo.DuckRadio = AudioMath.Smooth(AudioSettingsJogo.DuckRadio, radio, dt, 0.2f);

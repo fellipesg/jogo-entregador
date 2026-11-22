@@ -41,6 +41,8 @@ namespace Entregador.Game
         private readonly List<TextMeshProUGUI> _numeros = new List<TextMeshProUGUI>();
         private TextMeshProUGUI _velocidade;
         private TextMeshProUGUI _marcha;
+        private bool _cortandoGiro;
+        private bool _noLimitador;
         private Image _brilhoAlerta;
         private Image _aroLimitador;
         private RectTransform _combustivelBarra;
@@ -52,6 +54,12 @@ namespace Entregador.Game
         private TextMeshProUGUI _placaTexto;
         private RectTransform _chipContramao;
         private RectTransform _chipCorredor;
+        private RectTransform _chipSinal;
+        private TextMeshProUGUI _chipSinalTexto;
+        private RectTransform _chipCamera;
+        private bool _sinalVermelho;
+        private bool _sinalCamera;
+        private int _sinalMetros;
 
         private float _rpmAlvo;
         private float _rpmMostrado;
@@ -380,6 +388,30 @@ namespace Entregador.Game
         {
             _chipContramao = BuildChip("AvisoContramao", "Contramão", UiTema.Perigo, 176f);
             _chipCorredor = BuildChip("AvisoCorredor", "Corredor de ônibus", UiTema.Aviso, 220f);
+
+            // Sinal vermelho à frente: chip logo abaixo da placa de limite, e (com fotossensor) um chip pequeno com uma câmera ao lado.
+            _chipSinal = BuildChip("AvisoSinal", "Sinal vermelho", UiTema.Perigo, 30f);
+            _chipSinalTexto = _chipSinal.Find("Texto").GetComponent<TextMeshProUGUI>();
+            _chipCamera = UiKit.Panel(_root, "AvisoCamera", 14, new Color(0.055f, 0.067f, 0.086f, 0.9f));
+            _chipCamera.anchorMin = _chipCamera.anchorMax = new Vector2(0f, 0f);
+            _chipCamera.pivot = new Vector2(1f, 0f);
+            _chipCamera.anchoredPosition = new Vector2(-12f - 252f - 8f, 30f);
+            _chipCamera.sizeDelta = new Vector2(46f, 38f);
+            Image body = UiKit.Img(_chipCamera, "Corpo", UiSprites.Fill(4), UiTema.Aviso, true);
+            UiKit.Place(body.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -1f), new Vector2(26f, 17f));
+            Image bump = UiKit.Img(_chipCamera, "Visor", UiSprites.Fill(2), UiTema.Aviso, true);
+            UiKit.Place(bump.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(-6f, 9f), new Vector2(10f, 5f));
+            Image lens = UiKit.Circle(_chipCamera, "Lente", new Color(0.055f, 0.067f, 0.086f, 1f));
+            UiKit.Place(lens.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -1f), new Vector2(10f, 10f));
+            _chipCamera.gameObject.SetActive(false);
+        }
+
+        /// <summary>Sinal vermelho à frente (até 60 m): mostra o chip com a distância e, se o cruzamento tem fotossensor, a câmera.</summary>
+        public void SetSinal(bool vermelho, float metros, bool fotossensor)
+        {
+            _sinalVermelho = vermelho;
+            _sinalCamera = vermelho && fotossensor;
+            _sinalMetros = Mathf.RoundToInt(metros / 5f) * 5;
         }
 
         // ---------- Dados ----------
@@ -413,6 +445,13 @@ namespace Entregador.Game
             _freioValor = Mathf.Clamp01(brake);
         }
 
+        /// <summary>Estado do câmbio: cortando giro (parado, freio e acelerador: giro livre, luz de neutro) e limitador cortando (pisca o aro e as luzes).</summary>
+        public void SetTransmissao(bool cortandoGiro, bool noLimitador)
+        {
+            _cortandoGiro = cortandoGiro;
+            _noLimitador = noLimitador;
+        }
+
         public void SetSpeed(float kmh)
         {
             _speedKmh = Mathf.Max(0f, kmh);
@@ -422,6 +461,10 @@ namespace Entregador.Game
         {
             _limiteVia = limitKmh;
         }
+
+        public bool SinalVisivel => _chipSinal != null && _chipSinal.gameObject.activeSelf;
+
+        public bool CameraVisivel => _chipCamera != null && _chipCamera.gameObject.activeSelf;
 
         public void SetWarnings(bool wrongWay, bool busLane)
         {
@@ -453,12 +496,13 @@ namespace Entregador.Game
             _velocidade.text = shown.ToString();
             bool over = _limiteVia > 0 && _speedKmh > _limiteVia * 1.05f;
             _velocidade.color = over ? Color.Lerp(UiTema.Texto, UiTema.Perigo, 0.5f + 0.5f * Mathf.Sin(time * 10f)) : UiTema.Texto;
-            _marcha.text = _marchaAtual <= 0 ? "N" : _marchaAtual.ToString();
-            _marcha.color = _marchaAtual <= 0 ? UiTema.Sucesso : UiTema.Texto;
+            bool neutral = _marchaAtual <= 0 || _cortandoGiro;
+            _marcha.text = neutral ? "N" : _marchaAtual.ToString();
+            _marcha.color = neutral ? UiTema.Sucesso : UiTema.Texto;
 
             // Shift light: acende da esquerda para a direita a partir de 70% do limitador; no limite pisca tudo.
             float frac = _limitador > 0f ? _rpmMostrado / _limitador : 0f;
-            bool flash = frac >= 0.985f;
+            bool flash = frac >= 0.985f || _noLimitador;
             bool blink = Mathf.Repeat(time * 11f, 2f) < 1f;
 
             for (int i = 0; i < _leds.Length; i++)
@@ -510,6 +554,21 @@ namespace Entregador.Game
             if (_chipCorredor.gameObject.activeSelf != _corredor)
             {
                 _chipCorredor.gameObject.SetActive(_corredor);
+            }
+
+            if (_chipSinal.gameObject.activeSelf != _sinalVermelho)
+            {
+                _chipSinal.gameObject.SetActive(_sinalVermelho);
+            }
+
+            if (_chipCamera.gameObject.activeSelf != _sinalCamera)
+            {
+                _chipCamera.gameObject.SetActive(_sinalCamera);
+            }
+
+            if (_sinalVermelho)
+            {
+                _chipSinalTexto.text = $"Sinal vermelho · {_sinalMetros} m";
             }
 
             float s = 1f + 0.04f * Mathf.Sin(time * 8f);

@@ -11,6 +11,28 @@ namespace Entregador.Game
     {
         [SerializeField] private GameObject[] _modelos = new GameObject[5];
 
+        [SerializeField] private GameObject[] _atendentes = new GameObject[5];
+
+        /// <summary>O mesmo personagem inteiro (com cabeça e cabelo, sem capacete), para atender no balcão dos restaurantes.</summary>
+        public GameObject Atendente(Personagem personagem)
+        {
+            int index = (int)personagem;
+
+            return _atendentes != null && index >= 0 && index < _atendentes.Length ? _atendentes[index] : null;
+        }
+
+        public void DefinirAtendente(Personagem personagem, GameObject prefab)
+        {
+            int index = (int)personagem;
+
+            if (_atendentes == null || _atendentes.Length <= index)
+            {
+                System.Array.Resize(ref _atendentes, index + 1);
+            }
+
+            _atendentes[index] = prefab;
+        }
+
         public GameObject Modelo(Personagem personagem)
         {
             int index = (int)personagem;

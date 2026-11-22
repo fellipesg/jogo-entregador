@@ -251,8 +251,9 @@ namespace Entregador.Game
             _navRua = UiKit.Text(_navRoot, "Rua", string.Empty, 21f, UiTema.TextoSuave, FontStyles.Normal, TextAlignmentOptions.Left);
             UiKit.Place(_navRua.rectTransform, new Vector2(0f, 1f), new Vector2(122f, -64f), new Vector2(342f, 28f));
             _navRua.overflowMode = TextOverflowModes.Truncate;
-            _navDepois = UiKit.Text(_navRoot, "Depois", string.Empty, 14f, UiTema.TextoFraco, FontStyles.Bold | FontStyles.UpperCase, TextAlignmentOptions.Left, 3f);
+            _navDepois = UiKit.Text(_navRoot, "Depois", string.Empty, 14f, UiTema.TextoFraco, FontStyles.Bold | FontStyles.UpperCase, TextAlignmentOptions.Left, 1.2f);
             UiKit.Place(_navDepois.rectTransform, new Vector2(0f, 1f), new Vector2(122f, -92f), new Vector2(342f, 18f));
+            _navDepois.overflowMode = TextOverflowModes.Ellipsis;
             _navRoot.gameObject.SetActive(false);
         }
 
@@ -446,7 +447,7 @@ namespace Entregador.Game
         }
 
         /// <summary>Dados de corrida do painel: giro, marcha, limitador do modelo, acelerador, freio, limite da via e avisos.</summary>
-        public void SetRacingData(float rpm, int gear, float limiterRpm, float throttle, float brake, int limitKmh, bool wrongWay = false, bool busLane = false, float speedKmh = -1f)
+        public void SetRacingData(float rpm, int gear, float limiterRpm, float throttle, float brake, int limitKmh, bool wrongWay = false, bool busLane = false, float speedKmh = -1f, bool cortandoGiro = false, bool noLimitador = false)
         {
             if (speedKmh >= 0f)
             {
@@ -460,8 +461,19 @@ namespace Entregador.Game
             _painelView.SetData(rpm, gear, throttle, brake);
             _painelView.SetLimit(limitKmh);
             _painelView.SetWarnings(wrongWay, busLane);
-            Painel.Simular(Time.deltaTime, _speedKmh, throttle, gear);
+            _painelView.SetTransmissao(cortandoGiro, noLimitador);
+            Painel.Simular(Time.deltaTime, _speedKmh, throttle, cortandoGiro ? 0 : gear);
         }
+
+        /// <summary>Sinal vermelho à frente (até 60 m) e se o cruzamento tem fotossensor.</summary>
+        public void SetSinal(bool vermelho, float metros, bool fotossensor)
+        {
+            _painelView.SetSinal(vermelho, metros, fotossensor);
+        }
+
+        public bool SinalVisivel => _painelView.SinalVisivel;
+
+        public bool CameraSinalVisivel => _painelView.CameraVisivel;
 
         public float RpmMostrado => _painelView != null ? _painelView.RpmMostrado : 0f;
 
@@ -701,7 +713,7 @@ namespace Entregador.Game
         private void BuildToast(Transform parent)
         {
             _toastRoot = UiKit.Panel(parent, "Aviso", 22, UiTema.VidroForte);
-            UiKit.Place(_toastRoot, new Vector2(0.5f, 1f), new Vector2(0f, -150f), new Vector2(600f, 64f));
+            UiKit.Place(_toastRoot, new Vector2(0.5f, 1f), new Vector2(0f, -172f), new Vector2(600f, 64f));
 
             Image bubble = UiKit.Circle(_toastRoot, "Icone", UiTema.Destaque);
             UiKit.Place(bubble.rectTransform, new Vector2(0f, 0.5f), new Vector2(16f, 0f), new Vector2(34f, 34f));
@@ -760,7 +772,7 @@ namespace Entregador.Game
             float slideOut = Ease((_toastUntil - now) / 0.25f);
             float shown = Mathf.Min(slideIn, slideOut);
             float height = _toastRoot.sizeDelta.y;
-            _toastRoot.anchoredPosition = new Vector2(0f, Mathf.Lerp(height + 20f, -150f, shown));
+            _toastRoot.anchoredPosition = new Vector2(0f, Mathf.Lerp(height + 20f, -172f, shown));
         }
     }
 }

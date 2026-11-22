@@ -30,6 +30,8 @@ namespace Entregador.Game
         public const string PrefVolTransito = "vol_transito";
         public const string PrefVolAmbiente = "vol_ambiente";
         public const string PrefVolUi = "vol_ui";
+        public const string PrefVolRadio = "vol_radio";
+        public const string PrefVolGps = "vol_gps";
 
         private static readonly Personagem[] Pilotos = { Personagem.Jefinho, Personagem.Robsao, Personagem.Marcao, Personagem.SeuValdir, Personagem.Camila };
 
@@ -207,18 +209,18 @@ namespace Entregador.Game
             UiKit.Stretch(dim.rectTransform);
 
             RectTransform card = UiKit.Panel(_optionsRoot, "Cartao", UiTema.RaioTelefone, UiTema.VidroForte);
-            UiKit.Place(card, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(680f, 560f));
+            UiKit.Place(card, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(680f, 690f));
             TextMeshProUGUI title = UiKit.Text(card, "Titulo", "Opções", 34f, UiTema.Texto, FontStyles.Bold, TextAlignmentOptions.Left);
             UiKit.Place(title.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -34f), new Vector2(500f, 44f));
             TextMeshProUGUI sub = UiKit.Caps(card, "Sub", "Volumes", UiTema.TextoFraco, TextAlignmentOptions.Left, 13f);
             UiKit.Place(sub.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -86f), new Vector2(300f, 18f));
 
-            string[] names = { "Motor", "Trânsito", "Ambiente", "Interface" };
-            string[] keys = { PrefVolMotor, PrefVolTransito, PrefVolAmbiente, PrefVolUi };
+            string[] names = { "Motor", "Trânsito", "Ambiente", "Interface", "Rádio", "GPS" };
+            AudioBus[] buses = { AudioBus.Motor, AudioBus.Transito, AudioBus.Ambiente, AudioBus.Ui, AudioBus.Radio, AudioBus.Gps };
 
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < buses.Length; i++)
             {
-                BuildSliderRow(card, names[i], keys[i], -122f - i * 74f);
+                BuildSliderRow(card, names[i], buses[i], -122f - i * 74f);
             }
 
             Button back = UiKit.Pill(card, "Voltar", "Voltar", UiBotaoEstilo.Primario, 58f, 21f);
@@ -229,9 +231,9 @@ namespace Entregador.Game
 
         private Button _optionsBack;
 
-        private static void BuildSliderRow(Transform parent, string label, string key, float y)
+        private static void BuildSliderRow(Transform parent, string label, AudioBus bus, float y)
         {
-            RectTransform row = UiKit.Rect("Linha_" + key, parent);
+            RectTransform row = UiKit.Rect("Linha_" + bus, parent);
             UiKit.Place(row, new Vector2(0f, 1f), new Vector2(40f, y), new Vector2(600f, 56f));
             TextMeshProUGUI name = UiKit.Text(row, "Nome", label, 22f, UiTema.Texto, FontStyles.Bold, TextAlignmentOptions.Left);
             UiKit.Place(name.rectTransform, new Vector2(0f, 0.5f), Vector2.zero, new Vector2(150f, 30f));
@@ -272,11 +274,11 @@ namespace Entregador.Game
             slider.minValue = 0f;
             slider.maxValue = 1f;
             slider.transition = Selectable.Transition.None;
-            slider.SetValueWithoutNotify(PlayerPrefs.GetFloat(key, 0.8f));
+            slider.SetValueWithoutNotify(AudioSettingsJogo.Get(bus));
             value.text = Mathf.RoundToInt(slider.value * 100f) + "%";
             slider.onValueChanged.AddListener(v =>
             {
-                PlayerPrefs.SetFloat(key, v);
+                AudioSettingsJogo.Set(bus, v);
                 value.text = Mathf.RoundToInt(v * 100f) + "%";
             });
         }

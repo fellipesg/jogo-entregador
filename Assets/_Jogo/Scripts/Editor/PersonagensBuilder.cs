@@ -21,6 +21,9 @@ namespace Entregador.Editor
         /// <summary>Meta de triângulos do corpo do personagem (sem o capacete).</summary>
         public const int MetaTriangulos = 22000;
 
+        /// <summary>Meta de triângulos do atendente (corpo inteiro com cabeça e cabelo; aparece de perto atrás do balcão).</summary>
+        public const int MetaAtendente = 16000;
+
         private enum Grupo
         {
             Outro,
@@ -69,6 +72,17 @@ namespace Entregador.Editor
                 GerarTodos();
                 catalogo = AssetDatabase.LoadAssetAtPath<PersonagensCatalogo>(CatalogoPath);
             }
+            else if (catalogo.Atendente(Personagem.Camila) == null)
+            {
+                // Catálogo antigo, só com os pilotos: gera as versões inteiras (com cabeça e cabelo) para as atendentes.
+                foreach (Entrada e in Entradas)
+                {
+                    catalogo.DefinirAtendente(e.Personagem, Gerar(e, true));
+                }
+
+                EditorUtility.SetDirty(catalogo);
+                AssetDatabase.SaveAssets();
+            }
 
             return catalogo;
         }
@@ -82,8 +96,9 @@ namespace Entregador.Editor
 
             foreach (Entrada e in Entradas)
             {
-                GameObject prefab = Gerar(e);
+                GameObject prefab = Gerar(e, false);
                 catalogo.Definir(e.Personagem, prefab);
+                catalogo.DefinirAtendente(e.Personagem, Gerar(e, true));
             }
 
             EditorUtility.SetDirty(catalogo);
@@ -123,14 +138,20 @@ namespace Entregador.Editor
             return Grupo.Outro;
         }
 
-        private static GameObject Gerar(Entrada entrada)
+        /// <summary>
+        /// Um prefab do personagem. Piloto: sem cabelo, cabeça e o que a roupa cobre (o capacete esconde). Atendente: o corpo inteiro do Mixamo,
+        /// com cabeça e cabelo (só sai o capacete), sem poda; o cabelo ganha um material escuro próprio.
+        /// </summary>
+        private static GameObject Gerar(Entrada entrada, bool atendente)
         {
             string folder = $"Assets/ThirdParty/Mixamo/{entrada.Nome}";
             var fbx = AssetDatabase.LoadAssetAtPath<GameObject>($"{folder}/{entrada.Nome}.fbx");
             GameObject go = Object.Instantiate(fbx);
             go.name = entrada.Nome;
             Material material = CriarMaterial(entrada.Nome, $"{folder}/{entrada.Nome}_Corpo.png");
-            string meshPath = $"{Pasta}/{entrada.Nome}_Malhas.asset";
+            string sufixo = atendente ? "_Atendente" : string.Empty;
+            string meshPath = $"{Pasta}/{entrada.Nome}{sufixo}_Malhas.asset";
+            Material hairMaterial = atendente ? CriarMaterialCabelo(entrada.Nome) : null;
             AssetDatabase.DeleteAsset(meshPath);
 
             // 1. O que sai: cabelo, cílios, chapéu de obra.
@@ -141,7 +162,7 @@ namespace Entregador.Editor
             {
                 string n = renderer.name;
 
-                if (n.Contains("Hair") || n.Contains("Eyelash") || n.Contains("Helmet"))
+                if (n.Contains("Helmet") || (!atendente && (n.Contains("Hair") || n.Contains("Eyelash"))))
                 {
                     Object.DestroyImmediate(renderer.gameObject);
 
@@ -158,7 +179,7 @@ namespace Entregador.Editor
                 }
 
                 // Submalhas de cabelo (o Robsão vem numa malha só, com o cabelo como segundo material).
-                for (int s = 0; s < data.Subs.Count; s++)
+                for (int s = 0; s < data.Subs.Count && !atendente; s++)
                 {
                     if (names[s].ToLowerInvariant().Contains("hair"))
                     {
@@ -167,7 +188,7 @@ namespace Entregador.Editor
                 }
 
                 // 2. Poda do corpo: triângulos dominados pela cabeça (o capacete cobre) e por tronco/coxas/pés (a roupa cobre).
-                if (n.Contains("Body") || n == "Ch12")
+                if (!atendente && (n.Contains("Body") || n == "Ch12"))
                 {
                     Podar(data, renderer, entrada.PodarNoCorpo);
                 }
@@ -177,7 +198,7 @@ namespace Entregador.Editor
             }
 
             // 3. Decimação proporcional e materiais.
-            float ratio = Mathf.Min(1f, MetaTriangulos / (float)Mathf.Max(1, total));
+            float ratio = Mathf.Min(1f, (atendente ? MetaAtendente : MetaTriangulos) / (float)Mathf.Max(1, total));
             int finalTotal = 0;
             bool first = true;
 
@@ -211,7 +232,9 @@ namespace Entregador.Editor
 
                 for (int i = 0; i < materials.Length; i++)
                 {
-                    materials[i] = material;
+                    bool hair = atendente && (item.renderer.name.Contains("Hair") || item.renderer.name.Contains("Eyelash") ||
+                                              (i < item.materialNames.Length && item.materialNames[i].ToLowerInvariant().Contains("hair")));
+                    materials[i] = hair ? hairMaterial : material;
                 }
 
                 item.renderer.sharedMaterials = materials;
@@ -219,12 +242,11 @@ namespace Entregador.Editor
                 finalTotal += welded.Triangles;
             }
 
-            string prefabPath = $"{Pasta}/{entrada.Nome}.prefab";
+            string prefabPath = $"{Pasta}/{entrada.Nome}{sufixo}.prefab";
             AssetDatabase.DeleteAsset(prefabPath);
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(go, prefabPath);
             Object.DestroyImmediate(go);
-            Debug.Log($"[Personagens] {entrada.Nome}: {total} triângulos após a poda, {finalTotal} depois da decimação");
-            File.AppendAllText("/private/tmp/claude-501/-Users-felipegoncalves/a275e7fa-b013-40ea-bca5-3880da79d55c/scratchpad/personagens.txt", $"{entrada.Nome}: poda {total}, final {finalTotal}\n");
+            Debug.Log($"[Personagens] {entrada.Nome}{sufixo}: {total} triângulos após a poda, {finalTotal} depois da decimação");
 
             return prefab;
         }
@@ -427,6 +449,26 @@ namespace Entregador.Editor
             material.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath));
             material.SetColor("_BaseColor", Color.white);
             material.SetFloat("_Smoothness", 0.18f);
+            material.SetFloat("_Metallic", 0f);
+            EditorUtility.SetDirty(material);
+
+            return material;
+        }
+
+        private static Material CriarMaterialCabelo(string nome)
+        {
+            Directory.CreateDirectory(CityMaterials.Folder + "/Personagens");
+            string path = $"{CityMaterials.Folder}/Personagens/Personagem_{nome}_Cabelo.mat";
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+
+            if (material == null)
+            {
+                material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                AssetDatabase.CreateAsset(material, path);
+            }
+
+            material.SetColor("_BaseColor", new Color(0.07f, 0.05f, 0.045f));
+            material.SetFloat("_Smoothness", 0.3f);
             material.SetFloat("_Metallic", 0f);
             EditorUtility.SetDirty(material);
 

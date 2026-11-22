@@ -98,7 +98,6 @@ namespace Entregador.Game.Tests
             SaveAll(dir, "t3_prompt_retirar.png", main);
 
             // Diálogo: a atendente pede o código (três opções e o atalho para olhar o app).
-            Flow.CartaoNavegacao.Visivel = false;
             Flow.BeginCounter();
             Assert.AreEqual(FlowState.NoBalcao, Flow.State);
             follow.enabled = false;
@@ -124,7 +123,6 @@ namespace Entregador.Game.Tests
             StartDryWeek();
             Flow.BeginShift();
             Flow.AcceptOffer();
-            Flow.CartaoNavegacao.Visivel = true;
             yield return null;
 
             RouteGuide guide = Flow.Route;
@@ -165,7 +163,6 @@ namespace Entregador.Game.Tests
             yield return null;
             yield return null;
             SaveAll(dir, "n2_navegacao_18m.png", main);
-            Flow.CartaoNavegacao.Visivel = false;
         }
     }
 }

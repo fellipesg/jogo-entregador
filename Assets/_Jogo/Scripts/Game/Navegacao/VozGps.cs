@@ -39,12 +39,13 @@ namespace Entregador.Game
             }
         }
 
+        /// <summary>Volume do barramento do GPS (PlayerPrefs "vol_gps", pelo AudioSettingsJogo; padrão 0,8). O som final ainda multiplica o volume geral.</summary>
         public static float Volume
         {
-            get => Mathf.Clamp01(SafeGetFloat(ChaveVolume, 0.8f));
+            get => AudioSettingsJogo.Get(AudioBus.Gps);
             set
             {
-                PlayerPrefs.SetFloat(ChaveVolume, Mathf.Clamp01(value));
+                AudioSettingsJogo.Set(AudioBus.Gps, value);
                 PlayerPrefs.Save();
             }
         }
@@ -123,10 +124,13 @@ namespace Entregador.Game
             UltimoTexto = texto;
             Falas++;
 
-            if (!VozLigada || Volume <= 0.001f)
+            if (!VozLigada || AudioSettingsJogo.Efetivo(AudioBus.Gps) <= 0.001f)
             {
                 return;
             }
+
+            // O rádio abaixa enquanto o GPS fala (o AudioDirector lê isto).
+            AudioSettingsJogo.GpsFalandoAte = Time.unscaledTime + Mathf.Clamp(0.5f + (texto != null ? texto.Length : 0) * 0.065f, 0.6f, 6f);
 
 #if UNITY_ANDROID && !UNITY_EDITOR
             FalarAndroid(texto);
@@ -145,7 +149,7 @@ namespace Entregador.Game
                 return;
             }
 
-            _source.volume = Volume;
+            _source.volume = AudioSettingsJogo.Efetivo(AudioBus.Gps);
             _source.PlayOneShot(_ping);
         }
 
@@ -247,7 +251,7 @@ namespace Entregador.Game
 
             using (var parametros = new AndroidJavaObject("android.os.Bundle"))
             {
-                parametros.Call("putFloat", "volume", Volume);
+                parametros.Call("putFloat", "volume", AudioSettingsJogo.Efetivo(AudioBus.Gps));
                 _tts.Call<int>("speak", texto, 0, parametros, "gps");
             }
         }

@@ -18,6 +18,7 @@ namespace Entregador.Game
         private bool _fromFreeRoam;
         private FlowState _stateBeforePause;
         private float _orbitAngle;
+        private bool _orbiting;
         private float _lastInfoTime = -10f;
         private bool _cornerPause;
         private bool _cornerSet;
@@ -28,11 +29,57 @@ namespace Entregador.Game
         private void InitMenu()
         {
             _ui.SetMenuButton(false, OnCornerButton);
+
+            if (_route != null)
+            {
+                _route.Anunciou += OnRouteAnnounced;
+            }
         }
 
         private void OnDestroy()
         {
             Time.timeScale = 1f;
+
+            if (_route != null)
+            {
+                _route.Anunciou -= OnRouteAnnounced;
+            }
+
+            if (_radioHooked != null)
+            {
+                _radioHooked.EstacaoMudou -= OnRadioStation;
+            }
+        }
+
+        private RadioPlayer _radioHooked;
+
+        /// <summary>O rádio nasce com o AudioDirector (depois da cena carregar): liga o aviso de troca de estação assim que existir.</summary>
+        private void HookRadio()
+        {
+            if (_radioHooked == null && RadioPlayer.Instance != null)
+            {
+                _radioHooked = RadioPlayer.Instance;
+                _radioHooked.EstacaoMudou += OnRadioStation;
+            }
+        }
+
+        private void OnRadioStation(int index, RadioEstacao station)
+        {
+            if (_ui == null || !_ui.HudVisible)
+            {
+                return;
+            }
+
+            _ui.Toast(station != null ? "Rádio: " + station.Nome : "Rádio desligado", 2f);
+        }
+
+        /// <summary>"Recalculando rota" do GPS vira um aviso na tela (a voz fala o mesmo texto).</summary>
+        private void OnRouteAnnounced(string text, Manobra manobra)
+        {
+            if (manobra == Manobra.Nenhuma && IsDriving && _ui != null)
+            {
+                _ui.Toast("Recalculando rota", 2f);
+            }
         }
 
         // ---------- Menu principal ----------
@@ -85,6 +132,7 @@ namespace Entregador.Game
                 }
             }
 
+            HookRadio();
             TickMenuCamera();
             FeedHud();
         }
@@ -99,8 +147,10 @@ namespace Entregador.Game
 
             bool orbit = State == FlowState.MainMenu;
 
-            if (_followCamera.enabled == orbit)
+            // Só mexe na câmera que segue quando o menu principal abre ou fecha (quem a desliga de fora, como os testes de captura, manda).
+            if (orbit != _orbiting)
             {
+                _orbiting = orbit;
                 _followCamera.enabled = !orbit;
 
                 if (!orbit)
@@ -135,6 +185,7 @@ namespace Entregador.Game
 
             _fromFreeRoam = false;
             Time.timeScale = 1f;
+            ClearRetirada();
             EndOfDayFiscalizacao();
             ApplyWeather(Session.IsRainingToday);
             CurrentOrder = null;
@@ -444,18 +495,10 @@ namespace Entregador.Game
             _ui.SetHeading(_bike.Yaw);
             TransitoMonitor m = _monitor;
             _ui.SetRacingData(_bike.Rpm, _bike.Gear, _bike.RpmLimit, _bike.Throttle, _bike.Brake, m != null ? m.LimitKmh : 0,
-                m != null && m.WrongWay, m != null && m.InBusLane, _bike.SpeedKmh);
+                m != null && m.WrongWay, m != null && m.InBusLane, _bike.SpeedKmh, _bike.CortandoGiro, _bike.NoLimitador);
 
-            if (IsDriving && CurrentPlan != null)
-            {
-                Place target = State == FlowState.DrivingToRestaurant ? CurrentPlan.Restaurant : CurrentPlan.Customer;
-                float distance = _route != null && _route.HasTarget && _route.RemainingMeters > 0f ? _route.RemainingMeters : FlatDistance(_bike.Position, target.Position);
-                _ui.SetNavegacao(NavManeuver(target, distance), distance, target.Name);
-            }
-            else
-            {
-                _ui.HideNavegacao();
-            }
+            FeedNavegacao();
+            FeedSinal();
 
             if (Time.unscaledTime - _lastInfoTime > 0.1f)
             {
@@ -464,56 +507,54 @@ namespace Entregador.Game
             }
         }
 
-        /// <summary>Manobra aproximada para o cartão de navegação: ângulo do ponto da rota a uns 20 m à frente em relação à moto.</summary>
-        private int NavManeuver(Place target, float distance)
+        /// <summary>Sinal vermelho à frente da moto (até 60 m): o chip perto da placa de limite, mais a câmera se há fotossensor.</summary>
+        private void FeedSinal()
         {
-            if (distance < 25f)
+            SemaforoLeitura leitura = IsRoaming ? Semaforo.EstadoPara(_bike.Position, _bike.Forward, 60f) : default;
+            bool red = leitura.Existe && leitura.Estado == SemaforoEstado.Vermelho && leitura.Distancia <= 60f;
+            _ui.SetSinal(red, leitura.Distancia, leitura.Fotossensor);
+        }
+
+        /// <summary>Cartão de navegação do topo: a próxima instrução do RouteGuide (e a seguinte como "Depois"), todo quadro durante a corrida.</summary>
+        private void FeedNavegacao()
+        {
+            if (!IsDriving || CurrentPlan == null || _route == null || !_route.HasTarget)
             {
-                return 7;
+                _ui.HideNavegacao();
+
+                return;
             }
 
-            Vector3 aim = target.Position;
+            Place target = State == FlowState.DrivingToRestaurant ? CurrentPlan.Restaurant : CurrentPlan.Customer;
+            InstrucaoGps next = _route.ProximaInstrucao;
 
-            if (_route != null && _route.Route != null)
+            if (!next.Existe)
             {
-                foreach (Vector3 p in _route.Route)
-                {
-                    if (FlatDistance(_bike.Position, p) >= 20f)
-                    {
-                        aim = p;
+                float remaining = _route.RemainingMeters > 0f ? _route.RemainingMeters : FlatDistance(_bike.Position, target.Position);
+                _ui.SetNavegacao(0, remaining, target.Name);
 
-                        break;
-                    }
-                }
+                return;
             }
 
-            Vector3 dir = aim - _bike.Position;
-            dir.y = 0f;
+            InstrucaoGps then = _route.SegundaInstrucao;
+            string street = next.Manobra == Manobra.Chegada || string.IsNullOrEmpty(next.Rua) ? target.Name : next.Rua;
+            _ui.SetNavegacao(ManobraParaUi(next.Manobra), (float)next.Distancia, street, then.Existe ? then.Texto : null);
+        }
 
-            if (dir.sqrMagnitude < 0.01f)
+        /// <summary>Manobra do Core para o ícone do cartão: 0 em frente, 1 direita, 2 esquerda, 3 mantenha à direita, 4 mantenha à esquerda, 5 retorno, 6 rotatória, 7 chegada.</summary>
+        public static int ManobraParaUi(Manobra manobra)
+        {
+            switch (manobra)
             {
-                return 0;
+                case Manobra.VireADireita: return 1;
+                case Manobra.VireAEsquerda: return 2;
+                case Manobra.MantenhaADireita: return 3;
+                case Manobra.MantenhaAEsquerda: return 4;
+                case Manobra.Retorno: return 5;
+                case Manobra.RotatoriaSaida: return 6;
+                case Manobra.Chegada: return 7;
+                default: return 0;
             }
-
-            float angle = Vector3.SignedAngle(_bike.Forward, dir, Vector3.up);
-            float abs = Mathf.Abs(angle);
-
-            if (abs < 18f)
-            {
-                return 0;
-            }
-
-            if (abs < 55f)
-            {
-                return angle > 0f ? 3 : 4;
-            }
-
-            if (abs < 140f)
-            {
-                return angle > 0f ? 1 : 2;
-            }
-
-            return 5;
         }
 
         private InfoPainel BuildInfo()

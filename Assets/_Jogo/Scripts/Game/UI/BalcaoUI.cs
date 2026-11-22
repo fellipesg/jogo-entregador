@@ -17,16 +17,15 @@ namespace Entregador.Game
     /// </summary>
     public sealed class BalcaoUI : MonoBehaviour
     {
-        private static readonly Color PanelColor = new Color(0.05f, 0.06f, 0.09f, 0.9f);
-        private static readonly Color BubbleColor = new Color(0.17f, 0.2f, 0.27f, 0.96f);
-        private static readonly Color ButtonColor = new Color(0.2f, 0.45f, 0.85f, 0.95f);
-        private static readonly Color ButtonAltColor = new Color(0.32f, 0.34f, 0.4f, 0.95f);
-        private static readonly Color AccentColor = new Color(0.16f, 0.7f, 0.4f, 0.95f);
-
         private const int MaxChoices = 4;
 
+        private static readonly Color[] AvatarColors =
+        {
+            new Color(0.92f, 0.45f, 0.20f), new Color(0.30f, 0.62f, 1f), new Color(0.22f, 0.75f, 0.50f),
+            new Color(0.80f, 0.35f, 0.75f), new Color(0.95f, 0.70f, 0.15f),
+        };
+
         private Canvas _canvas;
-        private Sprite _rounded;
 
         private GameObject _promptRoot;
         private Button _promptButton;
@@ -43,8 +42,10 @@ namespace Entregador.Game
         private TMP_Text _nameText;
         private TMP_Text _speechText;
         private TMP_Text _codeText;
+        private Image _avatar;
+        private TMP_Text _avatarLetter;
         private GameObject _barRoot;
-        private Image _barFill;
+        private RectTransform _barFill;
         private TMP_Text _barLabel;
         private readonly List<Button> _choiceButtons = new List<Button>();
         private readonly List<TMP_Text> _choiceLabels = new List<TMP_Text>();
@@ -82,7 +83,6 @@ namespace Entregador.Game
             }
 
             EnsureEventSystem();
-            _rounded = MakeRoundedSprite();
 
             var canvasObject = new GameObject("CanvasBalcao", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             canvasObject.transform.SetParent(transform, false);
@@ -91,7 +91,7 @@ namespace Entregador.Game
             _canvas.sortingOrder = 20;
             var scaler = canvasObject.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1280f, 720f);
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
             scaler.matchWidthOrHeight = 0.5f;
 
             BuildPrompt(canvasObject.transform);
@@ -115,84 +115,100 @@ namespace Entregador.Game
 
         private void BuildPrompt(Transform parent)
         {
-            _promptRoot = Panel("Prompt", parent, AccentColor, new Vector2(0.5f, 0f), new Vector2(0f, 190f), new Vector2(380f, 70f));
-            _promptButton = _promptRoot.AddComponent<Button>();
-            _promptButton.targetGraphic = _promptRoot.GetComponent<Image>();
+            _promptButton = UiKit.Pill(parent, "Prompt", string.Empty, UiBotaoEstilo.Sucesso, 60f, 22f);
+            _promptRoot = _promptButton.gameObject;
+            UiKit.Place((RectTransform)_promptRoot.transform, new Vector2(0.5f, 0f), new Vector2(-140f, 150f), new Vector2(340f, 60f));
             _promptButton.onClick.AddListener(() => _promptAction?.Invoke());
-            _promptLabel = Text("Rotulo", _promptRoot.transform, 30, TextAlignmentOptions.Center, Color.white);
-            Stretch(_promptLabel.rectTransform, 8f);
+            _promptLabel = UiKit.Label(_promptButton);
 
-            _hintRoot = Panel("Dica", parent, new Color(0f, 0f, 0f, 0.7f), new Vector2(0.5f, 0f), new Vector2(0f, 190f), new Vector2(520f, 54f));
-            _hintText = Text("Texto", _hintRoot.transform, 24, TextAlignmentOptions.Center, Color.white);
-            Stretch(_hintText.rectTransform, 8f);
+            RectTransform hint = UiKit.Panel(parent, "Dica", UiTema.RaioChip, UiTema.Vidro, true, true);
+            _hintRoot = hint.gameObject;
+            UiKit.Place(hint, new Vector2(0.5f, 0f), new Vector2(-140f, 150f), new Vector2(560f, 48f));
+            _hintText = UiKit.Text(hint, "Texto", string.Empty, UiTema.TamPequeno + 2f, UiTema.Texto, FontStyles.Normal, TextAlignmentOptions.Center);
+            UiKit.Stretch(_hintText.rectTransform, 8f);
         }
 
         private void BuildChip(Transform parent)
         {
-            // Código do pedido (como o app mostra), abaixo do saldo no canto superior esquerdo.
-            _chipRoot = Panel("CodigoPedido", parent, PanelColor, new Vector2(0f, 1f), new Vector2(16f, -112f), new Vector2(300f, 44f), new Vector2(0f, 1f));
-            _chipText = Text("Texto", _chipRoot.transform, 22, TextAlignmentOptions.Center, new Color(0.85f, 0.95f, 1f));
-            Stretch(_chipText.rectTransform, 6f);
+            // Código do pedido (como o app mostra), abaixo do botão do menu no canto superior esquerdo.
+            RectTransform chip = UiKit.Panel(parent, "CodigoPedido", UiTema.RaioChip, UiTema.Vidro, true, true);
+            _chipRoot = chip.gameObject;
+            UiKit.Place(chip, new Vector2(0f, 1f), new Vector2(24f, -96f), new Vector2(300f, 40f));
+            _chipText = UiKit.Text(chip, "Texto", string.Empty, UiTema.TamPequeno, UiTema.Texto, FontStyles.Bold, TextAlignmentOptions.Center);
+            UiKit.Stretch(_chipText.rectTransform, 6f);
         }
 
         private void BuildDialogue(Transform parent)
         {
-            _dialogRoot = Panel("Balcao", parent, PanelColor, new Vector2(0.5f, 0f), new Vector2(0f, 24f), new Vector2(780f, 0f));
+            RectTransform panel = UiKit.Panel(parent, "Balcao", UiTema.RaioCartao + 4, UiTema.VidroForte, true, true);
+            _dialogRoot = panel.gameObject;
+            UiKit.Place(panel, new Vector2(0.5f, 0f), new Vector2(-140f, 36f), new Vector2(760f, 0f));
             var layout = _dialogRoot.AddComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(22, 22, 18, 20);
-            layout.spacing = 10f;
+            layout.padding = new RectOffset(24, 24, 20, 22);
+            layout.spacing = 12f;
             layout.childControlHeight = true;
             layout.childControlWidth = true;
             layout.childForceExpandHeight = false;
             layout.childForceExpandWidth = true;
             _dialogRoot.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-            _nameText = Text("Restaurante", _dialogRoot.transform, 28, TextAlignmentOptions.Left, Color.white);
-            _nameText.fontStyle = FontStyles.Bold;
-            Sized(_nameText.gameObject, 36f);
-            TMP_Text subtitle = Text("Subtitulo", _dialogRoot.transform, 16, TextAlignmentOptions.Left, new Color(0.65f, 0.72f, 0.85f));
-            subtitle.text = "Atendente do balcão";
-            Sized(subtitle.gameObject, 22f);
+            // Cabeçalho: nome do restaurante e a função de quem atende.
+            _nameText = UiKit.Text(panel, "Restaurante", string.Empty, UiTema.TamSubtitulo, UiTema.Texto, FontStyles.Bold);
+            Sized(_nameText.gameObject, 30f);
+            TMP_Text subtitle = UiKit.Caps(panel, "Subtitulo", "Atendente do balcão", UiTema.TextoSuave);
+            Sized(subtitle.gameObject, 18f);
 
-            GameObject bubble = Panel("Balao", _dialogRoot.transform, BubbleColor, Vector2.zero, Vector2.zero, Vector2.zero);
-            var bubbleLayout = bubble.AddComponent<VerticalLayoutGroup>();
-            bubbleLayout.padding = new RectOffset(18, 18, 14, 14);
+            // Conversa: avatar pequeno e balão de fala.
+            RectTransform row = UiKit.Rect("Conversa", panel);
+            var rowLayout = row.gameObject.AddComponent<HorizontalLayoutGroup>();
+            rowLayout.spacing = 12f;
+            rowLayout.childControlHeight = true;
+            rowLayout.childControlWidth = true;
+            rowLayout.childForceExpandHeight = false;
+            rowLayout.childForceExpandWidth = false;
+            rowLayout.childAlignment = TextAnchor.UpperLeft;
+
+            _avatar = UiKit.Circle(row, "Avatar", AvatarColors[0]);
+            var avatarElement = _avatar.gameObject.AddComponent<LayoutElement>();
+            avatarElement.minWidth = avatarElement.preferredWidth = 48f;
+            avatarElement.minHeight = avatarElement.preferredHeight = 48f;
+            _avatarLetter = UiKit.Text(_avatar.transform, "Inicial", "A", 24f, Color.white, FontStyles.Bold, TextAlignmentOptions.Center);
+            UiKit.Stretch(_avatarLetter.rectTransform);
+
+            RectTransform bubble = UiKit.Panel(row, "Balao", 18, UiTema.SuperficieForte, false, true);
+            var bubbleElement = bubble.gameObject.AddComponent<LayoutElement>();
+            bubbleElement.flexibleWidth = 1f;
+            bubbleElement.minHeight = 64f;
+            var bubbleLayout = bubble.gameObject.AddComponent<VerticalLayoutGroup>();
+            bubbleLayout.padding = new RectOffset(18, 18, 13, 14);
             bubbleLayout.childControlHeight = true;
             bubbleLayout.childControlWidth = true;
             bubbleLayout.childForceExpandHeight = false;
-            _speechText = Text("Fala", bubble.transform, 26, TextAlignmentOptions.TopLeft, Color.white);
+            _speechText = UiKit.Text(bubble, "Fala", string.Empty, UiTema.TamCorpo, UiTema.Texto, FontStyles.Normal, TextAlignmentOptions.TopLeft);
             _speechText.textWrappingMode = TextWrappingModes.Normal;
-            Sized(bubble, 0f, 76f);
 
-            _codeText = Text("CodigoDica", _dialogRoot.transform, 22, TextAlignmentOptions.Left, new Color(1f, 0.9f, 0.4f));
-            Sized(_codeText.gameObject, 28f);
+            _codeText = UiKit.Text(panel, "CodigoDica", string.Empty, UiTema.TamPequeno + 2f, UiTema.Aviso, FontStyles.Bold);
+            Sized(_codeText.gameObject, 26f);
 
-            _barRoot = Panel("Espera", _dialogRoot.transform, new Color(1f, 1f, 1f, 0.12f), Vector2.zero, Vector2.zero, Vector2.zero);
-            Sized(_barRoot, 30f);
-            GameObject fill = Panel("Preenchimento", _barRoot.transform, AccentColor, Vector2.zero, Vector2.zero, Vector2.zero);
-            _barFill = fill.GetComponent<Image>();
-            _barFill.type = Image.Type.Sliced;
-            var fillRect = fill.GetComponent<RectTransform>();
-            fillRect.anchorMin = Vector2.zero;
-            fillRect.anchorMax = new Vector2(0f, 1f);
-            fillRect.offsetMin = Vector2.zero;
-            fillRect.offsetMax = Vector2.zero;
-            fill.GetComponent<LayoutElement>().ignoreLayout = true;
-            _barLabel = Text("Rotulo", _barRoot.transform, 18, TextAlignmentOptions.Center, Color.white);
-            Stretch(_barLabel.rectTransform, 0f);
-            _barLabel.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+            // Espera: rótulo e barra de progresso.
+            RectTransform wait = UiKit.Rect("Espera", panel);
+            _barRoot = wait.gameObject;
+            var waitLayout = _barRoot.AddComponent<VerticalLayoutGroup>();
+            waitLayout.spacing = 8f;
+            waitLayout.childControlHeight = true;
+            waitLayout.childControlWidth = true;
+            waitLayout.childForceExpandHeight = false;
+            _barLabel = UiKit.Text(wait, "Rotulo", string.Empty, UiTema.TamPequeno, UiTema.TextoSuave, FontStyles.Normal, TextAlignmentOptions.Left);
+            Sized(_barLabel.gameObject, 22f);
+            _barFill = UiKit.Bar(wait, "Barra", UiTema.Destaque, 12f, out _);
+            Sized(_barFill.parent.gameObject, 12f);
 
             for (int i = 0; i < MaxChoices; i++)
             {
-                GameObject button = Panel("Escolha" + i, _dialogRoot.transform, ButtonColor, Vector2.zero, Vector2.zero, Vector2.zero);
-                Sized(button, 54f);
-                var component = button.AddComponent<Button>();
-                component.targetGraphic = button.GetComponent<Image>();
-                TMP_Text label = Text("Rotulo", button.transform, 24, TextAlignmentOptions.Center, Color.white);
-                Stretch(label.rectTransform, 8f);
-                label.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
-                _choiceButtons.Add(component);
-                _choiceLabels.Add(label);
+                Button button = UiKit.Pill(panel, "Escolha" + i, string.Empty, i == 0 ? UiBotaoEstilo.Primario : UiBotaoEstilo.Secundario, 50f, 20f);
+                Sized(button.gameObject, 50f);
+                _choiceButtons.Add(button);
+                _choiceLabels.Add(UiKit.Label(button));
             }
         }
 
@@ -266,6 +282,15 @@ namespace Entregador.Game
             HideHint();
             _dialogRoot.SetActive(true);
             _nameText.text = restaurante;
+            int hash = 0;
+
+            foreach (char c in restaurante ?? string.Empty)
+            {
+                hash = hash * 31 + c;
+            }
+
+            _avatar.color = AvatarColors[Mathf.Abs(hash) % AvatarColors.Length];
+            _avatarLetter.text = string.IsNullOrEmpty(restaurante) ? "A" : restaurante.Substring(0, 1).ToUpperInvariant();
             SetCodeHint(null);
             SetSpeech(fala, opcoes, onChoose);
         }
@@ -292,7 +317,6 @@ namespace Entregador.Game
                 _choiceLabels[i].text = opcoes[i];
                 _currentChoices.Add(opcoes[i]);
                 _choiceButtons[i].onClick.AddListener(() => onChoose?.Invoke(index));
-                _choiceButtons[i].GetComponent<Image>().color = i == 0 ? ButtonColor : ButtonAltColor;
             }
         }
 
@@ -302,8 +326,7 @@ namespace Entregador.Game
             _speechText.text = fala;
             _barRoot.SetActive(true);
             _barLabel.text = label;
-            RectTransform fill = _barFill.rectTransform;
-            fill.anchorMax = new Vector2(Mathf.Clamp01(progress), 1f);
+            UiKit.SetBar(_barFill, progress);
             _currentChoices.Clear();
 
             foreach (Button button in _choiceButtons)
@@ -344,81 +367,11 @@ namespace Entregador.Game
             return false;
         }
 
-        // ---------- Ferramentas ----------
-
-        private GameObject Panel(string name, Transform parent, Color color, Vector2 anchor, Vector2 position, Vector2 size, Vector2? pivot = null)
-        {
-            var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(LayoutElement));
-            go.transform.SetParent(parent, false);
-            var image = go.GetComponent<Image>();
-            image.sprite = _rounded;
-            image.type = Image.Type.Sliced;
-            image.color = color;
-            var rect = go.GetComponent<RectTransform>();
-
-            if (size != Vector2.zero || anchor != Vector2.zero)
-            {
-                rect.anchorMin = anchor;
-                rect.anchorMax = anchor;
-                rect.pivot = pivot ?? new Vector2(anchor.x, anchor.y);
-                rect.anchoredPosition = position;
-                rect.sizeDelta = size;
-            }
-
-            return go;
-        }
-
-        private static TMP_Text Text(string name, Transform parent, float size, TextAlignmentOptions alignment, Color color)
-        {
-            var go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
-            go.transform.SetParent(parent, false);
-            var text = go.GetComponent<TextMeshProUGUI>();
-            text.fontSize = size;
-            text.alignment = alignment;
-            text.color = color;
-            text.raycastTarget = false;
-            text.textWrappingMode = TextWrappingModes.NoWrap;
-
-            return text;
-        }
-
-        private static void Stretch(RectTransform rect, float margin)
-        {
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = new Vector2(margin, margin);
-            rect.offsetMax = new Vector2(-margin, -margin);
-        }
-
-        private static void Sized(GameObject go, float height, float minHeight = 0f)
+        private static void Sized(GameObject go, float height)
         {
             var element = go.GetComponent<LayoutElement>() ?? go.AddComponent<LayoutElement>();
-            element.preferredHeight = height > 0f ? height : -1f;
-            element.minHeight = minHeight > 0f ? minHeight : height;
-        }
-
-        /// <summary>Retângulo arredondado 9-slice gerado em código (sem arquivo de imagem).</summary>
-        private static Sprite MakeRoundedSprite()
-        {
-            const int size = 48;
-            const float radius = 14f;
-            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
-
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    float dx = Mathf.Max(radius - x - 0.5f, x + 0.5f - (size - radius), 0f);
-                    float dy = Mathf.Max(radius - y - 0.5f, y + 0.5f - (size - radius), 0f);
-                    float distance = Mathf.Sqrt(dx * dx + dy * dy);
-                    float alpha = Mathf.Clamp01(radius - distance + 0.5f);
-                    texture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
-                }
-            }
-
-            texture.Apply();
-
-            return Sprite.Create(texture, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, new Vector4(radius, radius, radius, radius));
+            element.preferredHeight = height;
+            element.minHeight = height;
         }
     }
 }

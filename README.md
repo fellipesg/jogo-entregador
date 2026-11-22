@@ -33,15 +33,23 @@ Packages/             Dependências (URP, Input System, uGUI, test-framework)
 
 Abra `Assets/_Jogo/Scenes/SantoAmaro.unity` e aperte Play. O jogo roda uma semana inteira (7 dias, até 3 pedidos por turno) em cima da `GameSession`.
 
-Controles:
+O jogo abre no **menu principal** (a câmera gira em volta da moto): Jogar (novo jogo: piloto, moto, documentos), Continuar, Opções (volumes de motor, trânsito, ambiente, interface, rádio e GPS), Créditos e Sair. "Começar" no novo jogo solta a moto em **exploração livre**: a cidade inteira, sem pedido nem relógio; radares, semáforos e a polícia continuam valendo. O celular (botão no canto superior esquerdo, ou M) abre o menu: Começar turno, Mapa, Garagem e perfil, Voltar ao menu principal. Durante o turno o mesmo botão (ou Esc) pausa. Depois do relatório do turno o jogo volta à exploração livre; o dia seguinte só começa pelo celular. Uma semana tem 7 dias, até 3 pedidos por turno, em cima da `GameSession`.
 
-| Ação | Teclado (Editor) | Celular |
+Controles (celular primeiro; o teclado é conveniência de desktop):
+
+| Ação | Celular | Teclado (desktop) |
 | --- | --- | --- |
-| Acelerar | W ou seta para cima | botão ACELERAR (direita) |
-| Frear / ré | S, seta para baixo ou espaço | botão FREAR (direita) |
-| Virar | A/D ou setas | botões < e > (esquerda) |
+| Acelerar | botão ACELERAR (direita) | W ou seta para cima |
+| Frear / ré | botão FREAR (direita) | S, seta para baixo ou Espaço |
+| Virar | botões < e > (esquerda) | A/D ou setas |
+| Cortar giro (acelerar o motor parado) | freio + acelerador juntos | S + W |
+| Retirar pedido no balcão | botão "Retirar pedido" | E |
+| Trocar de estação do rádio | (ainda sem botão) | R (próxima), Shift+R (anterior) |
+| Celular (menu) | botão do canto superior esquerdo | M |
+| Pausa | mesmo botão | Esc |
+| Informações (cortina) | deslizar do topo para baixo | Tab |
 
-Fluxo: tela do dia (Começar turno, Folgar, Comprar capa) → oferta de pedido (15 s) → dirigir até o restaurante seguindo a linha azul do GPS → entrar no marcador → levar ao cliente → Fotografar e Entregar → resultado → próximo pedido → resumo do turno → próximo dia → relatório da semana. O botão "Pular corrida" faz a entrega automática. O pneu pode furar na metade da corrida.
+Fluxo do turno: celular, Começar turno → tela do dia (Começar turno, Folgar, Comprar capa) → oferta de pedido (notificação do app, 15 s) → ir ao restaurante com o **cartão de navegação** (manobra, distância, rua e "Depois") → parar no balcão (menos de 3 km/h) → conversa com a atendente → levar ao cliente → Fotografar e Entregar → resultado → próximo pedido → resumo do turno → exploração livre. O botão "Pular corrida" faz a entrega automática. O pneu pode furar na metade da corrida.
 
 Constantes de distância e tempo (km por metro, velocidade de referência, segundos por minuto de jogo, tempo da oferta) ficam no componente `GameTuning`, no objeto `GameRoot` da cena.
 
@@ -232,9 +240,25 @@ Pela linha de comando (com o editor fechado neste projeto; não use `-quit`):
 O resultado fica no XML (atributos `total`, `passed` e `failed` em `test-run`).
 
 
+## Menu, exploração livre e interface
+
+- **Fluxo** (`GameFlow.Menu.cs`): estados `MainMenu`, `Setup`, `FreeRoam`, `FreeRoamMenu` (celular) e `Paused`. Na exploração livre não há pedido: a zona de retirada e o `BalcaoUI` só agem na corrida (`DrivingToRestaurant`); o menu do celular e a pausa congelam o tempo (`Time.timeScale = 0`), e com ele a espera do balcão.
+- **Interface** (`Game/UI/`): `GameUI` é uma fachada parcial (`GameUI.Hud/Modal/Screens`) sobre o kit `UiKit` (vidro escuro arredondado, botões em pílula primário/secundário, chips, barras), `UiTema` (cores e tamanhos), `UiSprites`/`UiGraphics`/`UiIcones` (sprites e ícones gerados em código). O HUD mínimo tem o painel da moto (`PainelMotoView`: conta-giros, velocidade, marcha, luzes e a placa do limite), o minimapa, o cartão de navegação e a cortina de informações; as telas do celular (oferta, mapa, opções) e o `BalcaoUI` (balcão: balão de fala da atendente com avatar, barra de espera e botões em pílula) usam o mesmo kit.
+- **Painel da moto**: a luz de troca de marcha acende a partir de 70% do limitador e o aro pisca quando a moto está no limitador (`ArcadeBikeController.NoLimitador`); parado com freio e acelerador juntos (`CortandoGiro`) o giro sobe livre e a marcha mostra N (luz de neutro). Um chip "Sinal vermelho · N m" aparece perto da placa de limite quando o semáforo à frente (`Semaforo.EstadoPara`, até 60 m) está vermelho, com um chip de câmera se o cruzamento tem fotossensor.
+- **Navegação no HUD**: a cada quadro da corrida o `GameFlow` lê `RouteGuide.ProximaInstrucao` e `SegundaInstrucao` e chama `GameUI.SetNavegacao(manobra, metros, rua, depois)` (0 em frente, 1 direita, 2 esquerda, 3 mantenha à direita, 4 mantenha à esquerda, 5 retorno, 6 rotatória, 7 chegada); fora da corrida o cartão some. "Recalculando rota" vira um aviso na tela.
+- **Atendentes**: cada restaurante tem um personagem do Mixamo inteiro (variantes `<Nome>_Atendente` geradas pelo `PersonagensBuilder`, com a cabeça e o cabelo do modelo), com um tom de roupa por restaurante, avental de peitilho liso na cor do restaurante (alças no pescoço, faixa na cintura) e boné em alguns, braços para baixo.
+
+## Áudio e rádio
+
+`Game/Audio/`: o `AudioDirector` nasce sozinho depois de carregar a cena e liga os sons por observação: motor da moto (`MotoEngineAudio`, sintetizado por `MotorSynth`, com marcha, limitador e giro livre parado), trânsito, sirenes, ambiente da cidade, chuva e vento, cliques de botão, sininho da oferta, jingle de "aceito" e de "perdido" (só quando a oferta é recusada ou vence), "plim" de pagamento, flash do radar. Os volumes são barramentos (`AudioBus`: motor, trânsito, ambiente, interface, rádio e GPS) gravados no `PlayerPrefs` (`vol_motor`, `vol_transito`, `vol_ambiente`, `vol_ui`, `vol_radio`, `vol_gps`) e ajustados em Opções. O **rádio** (`RadioPlayer`, `RadioSynth`) tem estações sintetizadas (funk, sertanejo, pagode, rock, lo-fi), R/Shift+R troca de estação e um aviso na tela mostra o nome; o rádio abaixa sob o jingle, a sirene e enquanto o GPS fala. O **GPS** fala pelo barramento do GPS (`VozGps`; no Android, TextToSpeech).
+
+## Semáforos
+
+`Core/SemaforoCiclo.cs` (ciclo de verde, amarelo e vermelho de dois eixos, em C# puro, testado), `Game/Semaforos/` (`SemaforoControlador` por cruzamento, `Semaforo.EstadoPara`/`VermelhoAFrente` para a interface e os carros, `SemaforoFiscal` que detecta o avanço do sinal vermelho) e `CityBuilder.Semaforos` (lâmpadas, braços e fotossensores nos `traffic_signals` do OSM). Os carros do trânsito param na linha no vermelho. Avançar o vermelho gera uma infração (`Infracao.AvancarSinalVermelho`): a multa chega pelo fotossensor, como a do radar, ou a polícia autua se uma viatura de ronda vê a moto (`TransitoMonitor.ReportarInfracao`).
+
 ## Retirada no balcão, GPS passo a passo e viatura
 
 - **Retirada** (`Core/Retirada.cs`, `Game/Retirada/`, `Game/UI/BalcaoUI.cs`): o pedido só é retirado depois de parar a moto (menos de 3 km/h) na zona do restaurante, apertar "Retirar pedido" (ou E) e conversar com a atendente (personagem do Mixamo no balcão, `AtendenteRestaurante`). A situação é sorteada com pesos (`RetiradaConfig`): pedido pronto, "tá saindo" (1 a 8 min de espera), pede o código (3 opções; o app mostra o certo no chip e no aviso ao aceitar), pedido trocado (conferir custa 1 min; pegar e sair arrisca 1 a 2 estrelas na entrega) e restaurante lotado (fila). Dá para reclamar no app (cancela, conta como recusa). Os minutos perdidos entram no tempo da corrida e a penalidade em `RunReport.PenalidadeRetirada`.
-- **GPS** (`RouteGuide`, `RoadGraph`, `Core/Navegacao.cs`, `Game/Navegacao/`): `Navegacao` calcula as manobras (vire, mantenha-se, retorno, rotatória, chegada) a partir dos pontos da rota com o nome das ruas (o grafo agora guarda o `name` do OSM); `AnunciadorNavegacao` fala em função da distância e da velocidade ("Em 500 metros...", "Em 200 metros...", "Vire à direita na Rua X"). `RouteGuide.ProximaInstrucao`, `SegundaInstrucao` e o evento `Anunciou` alimentam o cartão de navegação; `VozGps` usa o TextToSpeech do Android (iOS: TODO; no Editor só um "ping"; PlayerPrefs `gps_voz` e `vol_gps`); `SetasGps` pinta a seta da curva no chão e a placa de chevron nas curvas fechadas. O GPS refaz a rota (1,5 s fora dela, 3 s andando ao contrário, ou 0,8 s logo depois de uma esquina errada), com o rumo da moto (evita retorno desnecessário), avisa "Recalculando rota" uma vez por desvio e a cada 10 s troca por uma rota bem mais curta, se houver.
+- **GPS** (`RouteGuide`, `RoadGraph`, `Core/Navegacao.cs`, `Game/Navegacao/`): `Navegacao` calcula as manobras (vire, mantenha-se, retorno, rotatória, chegada) a partir dos pontos da rota com o nome das ruas (o grafo agora guarda o `name` do OSM); `AnunciadorNavegacao` fala em função da distância e da velocidade ("Em 500 metros...", "Em 200 metros...", "Vire à direita na Rua X"). `RouteGuide.ProximaInstrucao`, `SegundaInstrucao` e o evento `Anunciou` alimentam o cartão de navegação do `GameUI`; `VozGps` usa o TextToSpeech do Android (iOS: TODO; no Editor só um "ping"; PlayerPrefs `gps_voz` e `vol_gps`); `SetasGps` pinta a seta da curva no chão e a placa de chevron nas curvas fechadas. O GPS refaz a rota (1,5 s fora dela, 3 s andando ao contrário, ou 0,8 s logo depois de uma esquina errada), com o rumo da moto (evita retorno desnecessário), avisa "Recalculando rota" uma vez por desvio e a cada 10 s troca por uma rota bem mais curta, se houver.
 - **Trechos bloqueados**: o grafo é partido no limite da área jogável (`CityBuilder.GraphLimit`); a parte de fora e todo trecho junto de uma barreira de obra (`ViaBloqueada`) ficam bloqueados e o GPS nunca passa por eles. Beco sem saída só entra na rota se o destino estiver nele.
 - **Viatura** (`PoliceUnit`): na abordagem ela vem atrás com a sirene, casa a velocidade, freia e para 7 m atrás da moto (levemente de lado para o meio-fio); nunca avança a menos de `MinBikeDistance` (4,6 m) da moto, em nenhum modo, e a ronda espera se a moto estiver na frente.
