@@ -354,7 +354,7 @@ namespace Entregador.Game
 
             foreach (PoliceUnit unit in PoliceUnit.Active)
             {
-                if (unit != null && unit.Mode == PoliceMode.Perseguicao)
+                if (unit != null && unit.SirenActive)
                 {
                     siren = true;
 

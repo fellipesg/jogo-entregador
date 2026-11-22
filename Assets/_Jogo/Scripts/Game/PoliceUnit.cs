@@ -71,6 +71,9 @@ namespace Entregador.Game
 
         public bool LightsOn => _lightsOn;
 
+        /// <summary>A sirene só soa em perseguição ativa (blitz tem luz mas não tem sirene; parada atrás da moto também cala).</summary>
+        public bool SirenActive => _mode == PoliceMode.Perseguicao;
+
         /// <summary>A viatura tem circuito de ronda (é a patrulha, não a de uma blitz).</summary>
         public bool HasPatrolRoute => _waypoints != null && _waypoints.Length >= 2;
 

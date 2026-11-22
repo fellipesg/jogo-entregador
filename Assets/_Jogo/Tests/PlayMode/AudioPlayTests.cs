@@ -121,6 +121,23 @@ namespace Entregador.Game.Tests
         }
 
         [UnityTest]
+        public IEnumerator CheckpointUnitWithLightsOnIsSilent()
+        {
+            PoliceUnit unit = Flow.Patrol;
+            Assert.IsNotNull(unit);
+            yield return WaitFor(() => unit.GetComponentInChildren<SirenAudio>(true) != null, 5f);
+            SirenAudio siren = unit.GetComponentInChildren<SirenAudio>(true);
+            Assert.IsNotNull(siren);
+
+            unit.BeginCheckpoint();
+            Assert.AreEqual(PoliceMode.Parada, unit.Mode);
+            Assert.IsTrue(unit.LightsOn, "A blitz fica com a barra de luz ligada.");
+            yield return new WaitForSeconds(2f);
+            Assert.IsFalse(siren.Tocando, "Blitz tem luz piscando, mas não tem sirene.");
+            Assert.IsFalse(unit.SirenActive);
+        }
+
+        [UnityTest]
         public IEnumerator RadioSwitchesStationAndFiresTheEvent()
         {
             yield return WaitFor(() => RadioPlayer.Instance != null, 5f);

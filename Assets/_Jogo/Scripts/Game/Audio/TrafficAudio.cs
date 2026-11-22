@@ -134,7 +134,7 @@ namespace Entregador.Game
     }
 
     /// <summary>
-    /// Sirene da viatura (3D): perseguição = sirene cheia; blitz parada com a barra de luz ligada = sirene mais baixa. Liga e desliga sozinha
+    /// Sirene da viatura (3D): só soa em perseguição ativa (blitz parada, mesmo com a barra de luz ligada, é silenciosa). Liga e desliga sozinha
     /// pelo estado público da PoliceUnit. O pitch sobe e desce com a aproximação (Doppler manual).
     /// </summary>
     public sealed class SirenAudio : MonoBehaviour
@@ -217,13 +217,9 @@ namespace Entregador.Game
 
             float target = 0f;
 
-            if (_unit.Mode == PoliceMode.Perseguicao)
+            if (_unit.SirenActive)
             {
                 target = 1f;
-            }
-            else if (_unit.Mode == PoliceMode.Parada && _unit.LightsOn)
-            {
-                target = 0.4f;
             }
 
             if (_unit.Mode != _lastMode)
