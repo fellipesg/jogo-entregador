@@ -88,6 +88,7 @@ namespace Entregador.Game
             BuildSetup(_screenRoot.transform);
             BuildOptions(_screenRoot.transform);
             BuildMapa(_screenRoot.transform);
+            BuildRadioApp(_screenRoot.transform);
             _screenRoot.SetActive(false);
         }
 
@@ -111,6 +112,7 @@ namespace Entregador.Game
             _setupRoot.gameObject.SetActive(which == _setupRoot);
             _optionsRoot.gameObject.SetActive(which == _optionsRoot);
             _mapaRoot.gameObject.SetActive(which == _mapaRoot);
+            _radioRoot.gameObject.SetActive(which == _radioRoot);
             _titleRaw = title;
             _bodyRaw = body ?? string.Empty;
             _offerMode = false;
@@ -209,7 +211,7 @@ namespace Entregador.Game
             UiKit.Stretch(dim.rectTransform);
 
             RectTransform card = UiKit.Panel(_optionsRoot, "Cartao", UiTema.RaioTelefone, UiTema.VidroForte);
-            UiKit.Place(card, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(680f, 690f));
+            UiKit.Place(card, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(680f, 790f));
             TextMeshProUGUI title = UiKit.Text(card, "Titulo", "Opções", 34f, UiTema.Texto, FontStyles.Bold, TextAlignmentOptions.Left);
             UiKit.Place(title.rectTransform, new Vector2(0f, 1f), new Vector2(40f, -34f), new Vector2(500f, 44f));
             TextMeshProUGUI sub = UiKit.Caps(card, "Sub", "Volumes", UiTema.TextoFraco, TextAlignmentOptions.Left, 13f);
@@ -223,6 +225,8 @@ namespace Entregador.Game
                 BuildSliderRow(card, names[i], buses[i], -122f - i * 74f);
             }
 
+            BuildInternetRow(card, -122f - buses.Length * 74f - 2f);
+
             Button back = UiKit.Pill(card, "Voltar", "Voltar", UiBotaoEstilo.Primario, 58f, 21f);
             UiKit.Place((RectTransform)back.transform, new Vector2(0.5f, 0f), new Vector2(0f, 34f), new Vector2(300f, 58f));
             _optionsBack = back;
@@ -230,6 +234,48 @@ namespace Entregador.Game
         }
 
         private Button _optionsBack;
+        private Image _inetTrack;
+        private RectTransform _inetKnob;
+
+        /// <summary>Opção "Rádio pela internet" (padrão ligado) com o aviso de dados móveis.</summary>
+        private void BuildInternetRow(Transform card, float y)
+        {
+            RectTransform row = UiKit.Panel(card, "LinhaInternet", 20, new Color(1f, 1f, 1f, 0.06f), false, true);
+            UiKit.Place(row, new Vector2(0f, 1f), new Vector2(40f, y), new Vector2(600f, 78f));
+            Image hit = row.Find("Fundo").GetComponent<Image>();
+            hit.raycastTarget = true;
+            var button = row.gameObject.AddComponent<Button>();
+            button.transition = Selectable.Transition.None;
+            button.targetGraphic = hit;
+            TextMeshProUGUI title = UiKit.Text(row, "Titulo", "Rádio pela internet", 22f, UiTema.Texto, FontStyles.Bold, TextAlignmentOptions.Left);
+            UiKit.Place(title.rectTransform, new Vector2(0f, 1f), new Vector2(22f, -11f), new Vector2(430f, 28f));
+            TextMeshProUGUI note = UiKit.Text(row, "Nota", "Usa dados móveis. Desligado, só o rádio do jogo.", 15f, UiTema.TextoSuave, FontStyles.Normal, TextAlignmentOptions.Left);
+            UiKit.Place(note.rectTransform, new Vector2(0f, 1f), new Vector2(22f, -44f), new Vector2(470f, 22f));
+            _inetTrack = UiKit.Img(row, "Trilho", UiSprites.Fill(17), UiTema.Sucesso, true);
+            UiKit.Place(_inetTrack.rectTransform, new Vector2(1f, 0.5f), new Vector2(-22f, 0f), new Vector2(62f, 34f));
+            Image knob = UiKit.Circle(_inetTrack.transform, "Bola", Color.white);
+            UiKit.Place(knob.rectTransform, new Vector2(0f, 0.5f), new Vector2(31f, 0f), new Vector2(28f, 28f));
+            _inetKnob = knob.rectTransform;
+            button.onClick.AddListener(() =>
+            {
+                RadioPlayer.InternetAtiva = !RadioPlayer.InternetPreferida;
+                RefreshInternetRow();
+            });
+        }
+
+        private void RefreshInternetRow()
+        {
+            bool on = RadioPlayer.InternetPreferida;
+            _inetTrack.color = on ? UiTema.Sucesso : new Color(1f, 1f, 1f, 0.2f);
+            _inetKnob.anchoredPosition = new Vector2(on ? 31f : 3f, 0f);
+        }
+
+        /// <summary>Liga ou desliga o rádio pela internet (os testes usam; a tela das Opções faz o mesmo).</summary>
+        public void ToggleInternetRadio()
+        {
+            RadioPlayer.InternetAtiva = !RadioPlayer.InternetPreferida;
+            RefreshInternetRow();
+        }
 
         private static void BuildSliderRow(Transform parent, string label, AudioBus bus, float y)
         {
@@ -288,17 +334,19 @@ namespace Entregador.Game
         {
             _optionsBack.onClick.RemoveAllListeners();
             _optionsBack.onClick.AddListener(() => onBack?.Invoke());
+            RefreshInternetRow();
             ShowScreen(_optionsRoot, "Opções", string.Empty, new[] { new PanelButton("Voltar", onBack) });
         }
 
         public void ShowCredits(Action onBack)
         {
-            const string text = "Mapa · © OpenStreetMap contributors (licença ODbL)\n" +
+            string text = "Mapa · © OpenStreetMap contributors (licença ODbL)\n" +
                 "Personagens · Mixamo (Adobe)\n" +
                 "Fiat Uno · \"Fiat Uno 2001\" por B.M.A (Sketchfab, CC-BY 4.0)\n" +
                 "Chevrolet Onix · \"chevrolet onix\" por uzb_rx7 (Sketchfab, CC-BY 4.0)\n" +
                 "Texturas e céus · Poly Haven (CC0)\n" +
-                "Modelos · Kenney (CC0)";
+                "Modelos · Kenney (CC0)\n" +
+                RadioPlayer.TextoCreditos();
             ShowModal("Créditos", text, new PanelButton("Voltar", onBack));
         }
 

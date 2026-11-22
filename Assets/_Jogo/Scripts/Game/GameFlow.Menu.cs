@@ -48,6 +48,7 @@ namespace Entregador.Game
             if (_radioHooked != null)
             {
                 _radioHooked.EstacaoMudou -= OnRadioStation;
+                _radioHooked.ForaDoAr -= OnRadioForaDoAr;
             }
         }
 
@@ -60,6 +61,15 @@ namespace Entregador.Game
             {
                 _radioHooked = RadioPlayer.Instance;
                 _radioHooked.EstacaoMudou += OnRadioStation;
+                _radioHooked.ForaDoAr += OnRadioForaDoAr;
+            }
+        }
+
+        private void OnRadioForaDoAr(RadioEstacao station)
+        {
+            if (_ui != null && _ui.HudVisible)
+            {
+                _ui.Toast("Rádio fora do ar", 2.5f);
             }
         }
 
@@ -70,7 +80,8 @@ namespace Entregador.Game
                 return;
             }
 
-            _ui.Toast(station != null ? "Rádio: " + station.Nome : "Rádio desligado", 2f);
+            // "Rádio USP 93.7 FM" já diz que é rádio; "Quebrada FM" não.
+            _ui.Toast(station != null ? (station.Nome.StartsWith("Rádio", System.StringComparison.Ordinal) ? station.Nome : "Rádio: " + station.Nome) : "Rádio desligado", 2f);
         }
 
         /// <summary>"Recalculando rota" do GPS vira um aviso na tela (a voz fala o mesmo texto).</summary>
@@ -119,7 +130,7 @@ namespace Entregador.Game
         {
             Keyboard keyboard = Keyboard.current;
 
-            if (keyboard != null)
+            if (keyboard != null && !GameUI.DigitandoTexto)
             {
                 if (keyboard.escapeKey.wasPressedThisFrame)
                 {
@@ -291,6 +302,7 @@ namespace Entregador.Game
             _ui.ShowModal("Menu", body.ToString(),
                 new PanelButton("Começar turno", StartShiftFromMenu),
                 new PanelButton("Mapa", () => _ui.ShowMapa(_minimap != null ? _minimap.Texture : null, OpenPhoneMenu)),
+                new PanelButton("Rádio", () => _ui.ShowRadioApp(OpenPhoneMenu)),
                 new PanelButton("Garagem e perfil", ShowGarage),
                 new PanelButton("Voltar ao menu principal", ShowMainMenu),
                 new PanelButton("Fechar", CloseFreeRoamMenu));

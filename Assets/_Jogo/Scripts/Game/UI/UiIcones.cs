@@ -96,6 +96,26 @@ namespace Entregador.Game
             return new List<Vector2[]> { UiShape.Rect(0.36f, 0.22f, 0.64f, 0.84f) };
         }
 
+        /// <summary>Faixa anterior: barra à esquerda e triângulo apontando para ela.</summary>
+        public static List<Vector2[]> Anterior()
+        {
+            return new List<Vector2[]>
+            {
+                UiShape.Rect(0.20f, 0.22f, 0.31f, 0.78f),
+                new[] { new Vector2(0.82f, 0.22f), new Vector2(0.82f, 0.78f), new Vector2(0.34f, 0.5f) },
+            };
+        }
+
+        /// <summary>Próxima faixa: triângulo e barra à direita.</summary>
+        public static List<Vector2[]> Proxima()
+        {
+            return new List<Vector2[]>
+            {
+                UiShape.Rect(0.69f, 0.22f, 0.80f, 0.78f),
+                new[] { new Vector2(0.18f, 0.22f), new Vector2(0.66f, 0.5f), new Vector2(0.18f, 0.78f) },
+            };
+        }
+
         public static List<Vector2[]> Pausa()
         {
             return new List<Vector2[]> { UiShape.Rect(0.26f, 0.18f, 0.43f, 0.82f), UiShape.Rect(0.57f, 0.18f, 0.74f, 0.82f) };

@@ -118,6 +118,7 @@ namespace Entregador.Game
             TickDayTitle();
             TickOffer(time);
             TickScreens(dt);
+            TickRadioPilula();
         }
 
         // ---------- Utilidades ----------

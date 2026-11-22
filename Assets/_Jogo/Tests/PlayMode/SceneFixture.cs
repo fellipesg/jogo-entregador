@@ -15,6 +15,7 @@ namespace Entregador.Game.Tests
         [UnitySetUp]
         public IEnumerator LoadScene()
         {
+            RadioPlayer.NaoCarregarInternet = true; // os testes de cena não dependem da rede nem do cache do rádio
             SceneManager.LoadScene("SantoAmaro");
             yield return null;
             yield return null;
@@ -31,6 +32,13 @@ namespace Entregador.Game.Tests
             }
 
             Assert.IsNotNull(Flow.Session, "A sessão não foi criada.");
+
+            // O AudioDirector (e o RadioPlayer dentro dele) sobrevive às trocas de cena: cada teste começa com o rádio de fábrica.
+            if (RadioPlayer.Instance != null)
+            {
+                RadioPlayer.Instance.ReiniciarParaTestes();
+                RadioPlayer.Instance.Stream.UsarBackend(null);
+            }
         }
 
         protected static Place Restaurant(GameFlow flow) => flow.CurrentPlan.Restaurant;

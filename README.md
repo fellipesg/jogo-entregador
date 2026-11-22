@@ -33,7 +33,7 @@ Packages/             Dependências (URP, Input System, uGUI, test-framework)
 
 Abra `Assets/_Jogo/Scenes/SantoAmaro.unity` e aperte Play. O jogo roda uma semana inteira (7 dias, até 3 pedidos por turno) em cima da `GameSession`.
 
-O jogo abre no **menu principal** (a câmera gira em volta da moto): Jogar (novo jogo: piloto, moto, documentos), Continuar, Opções (volumes de motor, trânsito, ambiente, interface, rádio e GPS), Créditos e Sair. "Começar" no novo jogo solta a moto em **exploração livre**: a cidade inteira, sem pedido nem relógio; radares, semáforos e a polícia continuam valendo. O celular (botão no canto superior esquerdo, ou M) abre o menu: Começar turno, Mapa, Garagem e perfil, Voltar ao menu principal. Durante o turno o mesmo botão (ou Esc) pausa. Depois do relatório do turno o jogo volta à exploração livre; o dia seguinte só começa pelo celular. Uma semana tem 7 dias, até 3 pedidos por turno, em cima da `GameSession`.
+O jogo abre no **menu principal** (a câmera gira em volta da moto): Jogar (novo jogo: piloto, moto, documentos), Continuar, Opções (volumes de motor, trânsito, ambiente, interface, rádio e GPS, e "Rádio pela internet"), Créditos e Sair. "Começar" no novo jogo solta a moto em **exploração livre**: a cidade inteira, sem pedido nem relógio; radares, semáforos e a polícia continuam valendo. O celular (botão no canto superior esquerdo, ou M) abre o menu: Começar turno, Mapa, Rádio (rádios ao vivo de São Paulo), Garagem e perfil, Voltar ao menu principal. Durante o turno o mesmo botão (ou Esc) pausa. Depois do relatório do turno o jogo volta à exploração livre; o dia seguinte só começa pelo celular. Uma semana tem 7 dias, até 3 pedidos por turno, em cima da `GameSession`.
 
 Controles (celular primeiro; o teclado é conveniência de desktop):
 
@@ -44,7 +44,7 @@ Controles (celular primeiro; o teclado é conveniência de desktop):
 | Virar | botões < e > (esquerda) | A/D ou setas |
 | Cortar giro (acelerar o motor parado) | freio + acelerador juntos | S + W |
 | Retirar pedido no balcão | botão "Retirar pedido" | E |
-| Trocar de estação do rádio | (ainda sem botão) | R (próxima), Shift+R (anterior) |
+| Trocar de estação do rádio | botões < e > da pílula do rádio (canto de baixo à esquerda) | R (próxima), Shift+R (anterior) |
 | Celular (menu) | botão do canto superior esquerdo | M |
 | Pausa | mesmo botão | Esc |
 | Informações (cortina) | deslizar do topo para baixo | Tab |
@@ -251,6 +251,64 @@ O resultado fica no XML (atributos `total`, `passed` e `failed` em `test-run`).
 ## Áudio e rádio
 
 `Game/Audio/`: o `AudioDirector` nasce sozinho depois de carregar a cena e liga os sons por observação: motor da moto (`MotoEngineAudio`, sintetizado por `MotorSynth`, com marcha, limitador e giro livre parado), trânsito, sirenes, ambiente da cidade, chuva e vento, cliques de botão, sininho da oferta, jingle de "aceito" e de "perdido" (só quando a oferta é recusada ou vence), "plim" de pagamento, flash do radar. Os volumes são barramentos (`AudioBus`: motor, trânsito, ambiente, interface, rádio e GPS) gravados no `PlayerPrefs` (`vol_motor`, `vol_transito`, `vol_ambiente`, `vol_ui`, `vol_radio`, `vol_gps`) e ajustados em Opções. O **rádio** (`RadioPlayer`, `RadioSynth`) tem estações sintetizadas (funk, sertanejo, pagode, rock, lo-fi), R/Shift+R troca de estação e um aviso na tela mostra o nome; o rádio abaixa sob o jingle, a sirene e enquanto o GPS fala. O **GPS** fala pelo barramento do GPS (`VozGps`; no Android, TextToSpeech).
+
+### Rádios ao vivo de São Paulo (internet)
+
+O jogador escolhe rádios reais da cidade, transmitidas ao vivo pela internet. Duas fontes, em `Game/Audio/` e `Core/RadioDirectory.cs`:
+
+- **Lista curada** (`Assets/_Jogo/Audio/Radio/Resources/RadioCurada.json`, no repositório): rádios públicas primeiro (USP, Cultura, EBC, Câmara, Senado) e as emissoras populares da cidade, cada uma com nome, gênero, página inicial, URL do stream, codec, ícone e o `stationuuid` do Radio Browser. As URLs foram conferidas com `curl` (conteúdo `audio/mpeg`, quadros MP3 de verdade, ou `#EXTM3U` no caso do HLS). Vale mesmo sem rede.
+- **Radio Browser** (<https://api.radio-browser.info>, comunidade, gratuito): uma vez por dia o jogo busca `stations/search?state=São Paulo&countrycode=BR&order=votes&hidebroken=true` (espelho `de1`, com `de2` e `fi1` de reserva; `User-Agent: JogoEntregador/0.1`; nenhum dado do jogador é enviado), filtra pelo que o aparelho toca e `lastcheckok == 1`, e guarda em `radio_cache.json` (`Application.persistentDataPath`, validade de 1 dia). Uma segunda chamada (`stations/byuuid`) atualiza as URLs e o "no ar" das curadas. A contagem de cliques (`/json/url/<uuid>`) só vai quando a estação de fato começa a tocar. Sem rede: cache vencido; sem cache: só as curadas; sem nada: as estações sintetizadas "Rádio do jogo".
+- **Estações do jogo** (`RadioSynth`, "Rádio do jogo"): ficam no fim da lista como reserva offline.
+
+Como toca (`RadioStream` e um backend por plataforma, interface `IRadioStreamBackend`):
+
+| Backend | Onde | O que toca |
+| --- | --- | --- |
+| `UnityRadioBackend` | editor, desktop, iOS (por enquanto) | MP3. O `DownloadHandlerAudioClip` com `streamAudio` do Unity **não toca stream infinito** (exige saber o tamanho do arquivo: "size is still not known", depois "Cannot create FMOD::Sound instance"; o teste `DiagnosticoStreamAudioNativoDoUnity` registra isso). Então um `DownloadHandlerScript` recebe os bytes, o `Mp3Segmenter` (Core, testado) recorta em trechos de 2 s em fronteira de quadro, cada trecho vira um MP3 pequeno que o Unity decodifica, e os clipes são emendados com `PlayScheduled` em duas fontes (buffer de 6 s). Cada trecho começa com dois quadros de silêncio e repete três quadros do anterior, para o FMOD aceitar o arquivo (a "reserva de bits" do MP3 aponta para dados do quadro anterior) sem falha audível. Metadados ICY são lidos (`IcyDemux`) para o "agora tocando". |
+| `AndroidRadioBackend` | Android (aparelho) | `android.media.MediaPlayer` por `AndroidJavaObject` (`setDataSource`, `prepareAsync`, `start`, `setVolume`): MP3, AAC e HLS. Escrito segundo a API documentada, **ainda não testado em aparelho**. |
+| `IosRadioBackend` | iOS | esqueleto: usa o backend do Unity (só MP3). **TODO**: plugin nativo com `AVPlayer` para AAC e HLS. |
+
+No editor e no iOS só entram na lista as estações que o backend toca (MP3); no Android entram todas (inclusive AAC e HLS: Cultura, Nacional, Senado, Jovem Pan). Nenhuma biblioteca de terceiros foi adicionada. Comportamento: "Sintonizando…" enquanto conecta, reconexão com espera de 1 s e 2 s, e depois "Rádio fora do ar" (aviso na tela) e pulo para a próxima estação; o stream para quando o app vai para segundo plano (`OnApplicationPause`) e sintoniza de novo ao voltar; o volume é o do barramento Rádio com o ducking do jogo (aplicado todo quadro; no Android por `setVolume`).
+
+Na tela: o app **Rádio** do celular (M ou o ícone do celular, depois "Rádio") tem a lista com ícones (favicons baixados em segundo plano e guardados em `radio_icones`, com a inicial da estação como reserva), chips de gênero (Notícias, Pop, Sertanejo, Rock, Funk e rap, Samba e pagode, Gospel, MPB e clássica), busca, favoritas (estrela, `PlayerPrefs` `radio_favoritos`), "Desligar rádio" e a barra "tocando agora". Uma pílula discreta no canto de baixo à esquerda do HUD mostra a estação atual com anterior e próxima para o toque. R e Shift+R seguem trocando de estação, com o chiado de sintonia entre elas; a roda do R tem as favoritas (ou as primeiras da lista) e as estações do jogo, e fecha no "desligado". Em Opções, **Rádio pela internet** (padrão ligado, `PlayerPrefs` `radio_internet`) avisa que usa dados móveis; `musica_externa` continua desligando o rádio.
+
+Testes: `Tests/EditMode/RadioDirectoryTests.cs` (lógica pura, com uma resposta gravada e reduzida do Radio Browser em `Tests/EditMode/Fixtures/radio_browser_sp.json`, a lista curada, cache, busca, MP3 e ICY); `Tests/PlayMode/RadioPlayTests.cs` (rádio na cena com um backend de mentira) e `RadioStreamNetworkTests.cs` (categoria `Network`: toca streams reais pelo Unity; sem rede o teste é ignorado).
+
+### Aviso legal: rádios de terceiros
+
+As transmissões ao vivo das emissoras são **conteúdo protegido por direitos autorais** (no Brasil, a execução pública de música é arrecadada pelo ECAD) e o jogo só as retransmite a partir dos streams públicos que as próprias emissoras oferecem em seus sites. **Antes de PUBLICAR o jogo (lojas Google Play e App Store) a equipe deve obter autorização de cada emissora** da lista curada, ou limitar o jogo às emissoras que permitam a redistribuição (as rádios públicas, como Cultura, USP, EBC, Câmara e Senado, são as candidatas mais prováveis, mas ainda precisam de confirmação por escrito). Enquanto isso, a lista serve ao desenvolvimento e aos testes. Os dados do Radio Browser são usados conforme os termos do serviço (uso gratuito pela API, `User-Agent` identificado, cliques só quando a rádio toca, sem envio de dados pessoais). O jogo mostra os créditos "Rádios ao vivo" na tela de Créditos.
+
+Emissoras da lista curada (todas verificadas com `curl` em 22/11/2026: o stream respondeu com áudio; "Stream" é o codec do stream guardado na lista):
+
+| Emissora | Tipo | Gênero | Stream | Página inicial |
+| --- | --- | --- | --- | --- |
+| Rádio USP 93.7 FM | Pública | MPB e clássica | MP3 128 kbps | <https://www.usp.br/radiousp> |
+| Cultura FM 103.3 | Pública | MPB e clássica | HLS | <https://cultura.uol.com.br/aovivo/4_ao-vivo-radio-cultura-fm.html> |
+| Cultura Brasil 77.9 AM | Pública | Notícias | HLS | <https://cultura.uol.com.br/radio/> |
+| Rádio Nacional São Paulo | Pública | Notícias | HLS | <https://radios.ebc.com.br/radio-nacional-fm-sao-paulo> |
+| Rádio Câmara | Pública | Notícias | MP3 | <https://www.camara.leg.br/radio> |
+| Rádio Senado | Pública | Notícias | HLS | <https://www12.senado.leg.br/radio> |
+| CBN São Paulo | Comercial | Notícias | MP3 128 kbps | <https://cbn.globoradio.globo.com/programas/cbn-sao-paulo/CBN-SAO-PAULO.htm> |
+| BandNews FM São Paulo | Comercial | Notícias | MP3 96 kbps | <https://www.band.uol.com.br/radios/bandnews-fm/sao-paulo> |
+| Rádio Bandeirantes | Comercial | Notícias | MP3 96 kbps | <https://www.band.uol.com.br/radios/radio-bandeirantes/sao-paulo> |
+| Band FM 96.1 | Comercial | Pop | MP3 96 kbps | <https://www.band.uol.com.br/band-fm> |
+| Transamérica 100.1 | Comercial | Pop | MP3 128 kbps | <https://transamericafm.com.br/> |
+| Mix FM 106.3 | Comercial | Pop | MP3 96 kbps | <https://aovivo.radiomixfm.com.br/> |
+| Energia 97 FM | Comercial | Pop | MP3 96 kbps | <https://www.97fm.com.br/> |
+| Rádio Disney 91.3 | Comercial | Pop | MP3 96 kbps | <https://www.disney.com.br/radio/> |
+| Jovem Pan 100.9 | Comercial | Pop | AAC 128 kbps | <https://jovempan.com.br/> |
+| Metropolitana 98.5 | Comercial | Pop | AAC 64 kbps | <https://metropolitanafm.com.br/> |
+| Kiss FM 92.5 | Comercial | Rock | MP3 96 kbps | <https://kissfm.com.br/aovivo/> |
+| 89 FM A Rádio Rock | Comercial | Rock | MP3 96 kbps | <https://www.radiorock.com.br/> |
+| Alpha FM 101.7 | Comercial | Pop | MP3 96 kbps | <http://www.alphafm.com.br/> |
+| Eldorado FM 92.9 | Comercial | MPB e clássica | MP3 96 kbps | <https://www.estadao.com.br/eldorado/> |
+| Nova Brasil FM 89.7 | Comercial | MPB e clássica | MP3 96 kbps | <https://novabrasilfm.com.br/> |
+| Sertaneja 106.7 | Comercial | Sertanejo | MP3 128 kbps | <https://www.106sertaneja.com.br/> |
+| Liga Samba | Comercial | Samba e pagode | MP3 256 kbps | <https://www.radio-ao-vivo.com/radio-liga-samba> |
+| Rádio Rap Brasil | Comercial | Funk e rap | MP3 128 kbps | <https://www.cxradio.com.br/radio/rap-brasil> |
+| Rise Funk (SAD Music) | Comercial | Funk e rap | MP3 128 kbps | <http://jpdofunk3.com.br:2020/public/8242> |
+| Rádio Teomidia | Comercial | Gospel | MP3 128 kbps | <https://teomidia.radio.br/teomidia/> |
+| Rádio Aparecida 104.3 | Comercial | Gospel | AAC 128 kbps | <http://www.a12.com/radio-aparecida> |
 
 ## Semáforos
 

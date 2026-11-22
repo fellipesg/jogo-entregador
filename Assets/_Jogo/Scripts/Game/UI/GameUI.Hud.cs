@@ -91,6 +91,7 @@ namespace Entregador.Game
             _painelView.SetEstado(Painel);
 
             BuildCornerButtons(_hudRoot.transform);
+            BuildRadioPilula(_hudRoot.transform);
         }
 
         /// <summary>
