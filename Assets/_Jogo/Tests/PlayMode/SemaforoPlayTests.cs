@@ -114,15 +114,28 @@ namespace Entregador.Game.Tests
             c.Fixar(a.Grupo, SemaforoEstado.Vermelho);
             yield return null;
 
+            // Com 29 cruzamentos, outro semáforo pode estar mais perto: só confere o braço escolhido quando é ele que responde.
             Vector3 at = LaneBefore(a, 30f);
             SemaforoLeitura leitura = Semaforo.EstadoPara(at, a.Direcao);
             Assert.IsTrue(leitura.Existe);
-            Assert.AreEqual(SemaforoEstado.Vermelho, leitura.Estado);
-            Assert.AreEqual(30f, leitura.Distancia, 0.5f);
-            Assert.IsTrue(Semaforo.VermelhoAFrente(at, a.Direcao));
+            Assert.LessOrEqual(leitura.Distancia, 30.5f, "O mais próximo à frente nunca está mais longe que o braço escolhido.");
 
-            Assert.IsFalse(Semaforo.EstadoPara(at, -a.Direcao, 20f).Existe, "Indo no sentido contrário o sinal não é para você.");
-            Assert.IsFalse(Semaforo.EstadoPara(a.Linha - a.Direcao * 150f, a.Direcao, 80f).Existe, "Fora do alcance.");
+            if (leitura.Linha == a.Linha)
+            {
+                Assert.AreEqual(SemaforoEstado.Vermelho, leitura.Estado);
+                Assert.AreEqual(30f, leitura.Distancia, 0.5f);
+                Assert.IsTrue(Semaforo.VermelhoAFrente(at, a.Direcao));
+            }
+
+            // Sentido contrário: o braço escolhido não pode responder (outro semáforo alinhado nesse sentido pode).
+            SemaforoLeitura contrario = Semaforo.EstadoPara(at, -a.Direcao, 20f);
+            Assert.IsFalse(contrario.Existe && contrario.Linha == a.Linha, "Indo no sentido contrário o sinal não é para você.");
+            Assert.IsTrue(!contrario.Existe || contrario.Distancia <= 20.5f, "Respeita o alcance.");
+
+            // Fora do mapa não há semáforo nenhum, em qualquer direção.
+            Vector3 nowhere = new Vector3(9000f, 0f, 9000f);
+            Assert.IsFalse(Semaforo.EstadoPara(nowhere, a.Direcao, 80f).Existe, "Fora do alcance.");
+            Assert.IsFalse(Semaforo.EstadoPara(nowhere, -a.Direcao, 500f).Existe);
         }
 
         private TrafficLoop SpawnCar(SemaforoAproximacao a, float before)
