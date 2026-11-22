@@ -104,6 +104,15 @@ namespace Entregador.Game
 
         public float Rpm => _rpm;
 
+        /// <summary>Embreagem puxada (cortando giro parado): o giro sobe livre e a roda não recebe força.</summary>
+        public bool Embreagem { get; private set; }
+
+        /// <summary>O limitador de giro está cortando (o giro quica perto do limite).</summary>
+        public bool NoLimitador { get; private set; }
+
+        private float _cutTimer;
+        private float _holdTimer;
+
         /// <summary>Fração do giro (0 na marcha lenta, 1 no limite).</summary>
         public float GiroNormalizado => Mathf.InverseLerp(_perfil.RpmMarchaLenta, _perfil.RpmLimite, _rpm);
 
@@ -126,6 +135,7 @@ namespace Entregador.Game
         /// </summary>
         public float Step(float speed, float throttle, float dt)
         {
+            Embreagem = false;
             speed = Mathf.Max(0f, speed);
             int top = _perfil.Marchas - 1;
             int g = Marcha - 1;
@@ -152,7 +162,16 @@ namespace Entregador.Game
             // Giro: acompanha a roda; parado, o acelerador "toca" o motor até metade do caminho (embreagem patinando).
             float target = Mathf.Max(Mathf.Clamp01(x), speed < 3f ? throttle * 0.5f : 0f);
             float goal = Mathf.Lerp(_perfil.RpmMarchaLenta, _perfil.RpmLimite, Mathf.Min(1f, target));
+
+            // Saindo de um corte de giro: a roda patina e o giro demora a cair.
+            if (_holdTimer > 0f)
+            {
+                _holdTimer -= dt;
+                goal = Mathf.Max(goal, Mathf.Lerp(_perfil.RpmMarchaLenta, _perfil.RpmLimite, 0.7f));
+            }
+
             _rpm = Mathf.MoveTowards(_rpm, goal, 14000f * dt);
+            AplicarLimitador(throttle, dt);
 
             if (throttle > 0.05f)
             {
@@ -167,6 +186,50 @@ namespace Entregador.Game
             }
 
             return -_perfil.FreioMotor * (0.3f + 0.7f * Mathf.Clamp01(x));
+        }
+
+        /// <summary>
+        /// Moto parada com a embreagem puxada ("cortando giro"): o giro sobe livre até o limitador (cerca de 0,5 s) e cai ao soltar.
+        /// A roda não recebe força: quem chama mantém a moto parada.
+        /// </summary>
+        public void StepNeutro(float throttle, float dt)
+        {
+            Embreagem = true;
+            float limit = _perfil.RpmLimite;
+            float goal = throttle > 0.05f ? Mathf.Lerp(_perfil.RpmMarchaLenta, limit * 1.02f, throttle) : _perfil.RpmMarchaLenta;
+            float rate = goal > _rpm ? (limit - _perfil.RpmMarchaLenta) / 0.5f : 9000f;
+            _rpm = Mathf.MoveTowards(_rpm, goal, rate * dt);
+            AplicarLimitador(throttle, dt);
+        }
+
+        /// <summary>Soltou o freio com o motor girando: a roda patina um instante e o giro demora a cair.</summary>
+        public void IniciarArrancada()
+        {
+            float n = Mathf.Clamp01((_rpm - _perfil.RpmMarchaLenta) / (_perfil.RpmLimite - _perfil.RpmMarchaLenta));
+            _holdTimer = 0.5f * n;
+        }
+
+        /// <summary>Corte de ignição no limite: o giro cai uns 550 rpm, volta e corta de novo (quica a ~13 Hz).</summary>
+        private void AplicarLimitador(float throttle, float dt)
+        {
+            float limit = _perfil.RpmLimite;
+
+            if (_cutTimer > 0f)
+            {
+                _cutTimer -= dt;
+                _rpm = Mathf.MoveTowards(_rpm, limit - 550f, 40000f * dt);
+                NoLimitador = true;
+
+                return;
+            }
+
+            if (throttle > 0.5f && _rpm >= limit - 20f)
+            {
+                _cutTimer = 0.036f;
+                _rpm = Mathf.Min(_rpm, limit);
+            }
+
+            NoLimitador = throttle > 0.5f && _rpm >= limit - 650f;
         }
     }
 }
