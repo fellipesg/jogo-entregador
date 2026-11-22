@@ -1,4 +1,5 @@
 using System.Collections;
+using Entregador.Core;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -45,6 +46,30 @@ namespace Entregador.Game.Tests
 
         /// <summary>Direção de avanço (plano) de um yaw em graus.</summary>
         protected static Vector3 Heading(float yaw) => Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
+
+        /// <summary>
+        /// Faz a retirada de verdade: para a moto na zona do restaurante, espera o botão "Retirar pedido", abre o balcão e pega o pedido
+        /// (situação "pedido pronto"). Termina em DrivingToCustomer.
+        /// </summary>
+        protected IEnumerator PickUpOrder(GameFlow flow, BalcaoSituacao situacao = BalcaoSituacao.PedidoPronto)
+        {
+            flow.SituacaoForcada = situacao;
+            TeleportNear(flow, flow.CurrentPlan.Restaurant);
+            flow.Bike.GetComponent<Rigidbody>().linearVelocity = Vector3.zero;
+
+            for (int i = 0; i < 60 && !flow.Balcao.PromptVisible; i++)
+            {
+                yield return null;
+            }
+
+            Assert.IsTrue(flow.Balcao.PromptVisible, "Parado na zona do restaurante o botão Retirar pedido deveria aparecer.");
+            Assert.AreEqual(FlowState.DrivingToRestaurant, flow.State, "Só entrar na zona não retira o pedido.");
+            Assert.IsTrue(flow.Balcao.ClickPrompt());
+            Assert.AreEqual(FlowState.NoBalcao, flow.State);
+            Assert.IsTrue(flow.Balcao.ClickChoice("Pegar o pedido"));
+            Assert.AreEqual(FlowState.DrivingToCustomer, flow.State, "Depois do diálogo o pedido é retirado.");
+            yield return null;
+        }
 
         protected static void TeleportNear(GameFlow flow, Place place)
         {

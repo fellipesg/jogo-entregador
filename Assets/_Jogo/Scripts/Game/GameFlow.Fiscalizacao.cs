@@ -213,6 +213,11 @@ namespace Entregador.Game
             {
                 _abordagemTimer += Time.deltaTime;
 
+                if (_abordagemUnit != null && _abordagemUnit.Mode == PoliceMode.Perseguicao && _abordagemUnit.ReachedStandoff && _bike.Speed < 1.5f)
+                {
+                    _abordagemUnit.HaltBehind();
+                }
+
                 if (!_abordagemPanelShown && (_bike.Speed < 1.2f || _abordagemTimer > StopPanelMaxDelay))
                 {
                     ShowAbordagemPanel();
@@ -309,7 +314,7 @@ namespace Entregador.Game
             {
                 bool timeout = _chaseTimer > _tuning.ChaseSeconds + 8f;
 
-                if (gap < _tuning.CatchMeters || _abordagemUnit == null || timeout)
+                if (gap < Mathf.Max(_tuning.CatchMeters, PoliceUnit.StandoffMeters + 1.5f) || _abordagemUnit == null || timeout)
                 {
                     EndChase(true);
                 }

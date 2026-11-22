@@ -13,6 +13,10 @@ namespace Entregador.Game
         Blocked,
         Offer,
         DrivingToRestaurant,
+
+        /// <summary>Parado no balcão do restaurante, conversando com a atendente (esperar, conferir, informar o código...).</summary>
+        NoBalcao,
+
         DrivingToCustomer,
         FlatTire,
         AtDoor,
@@ -151,6 +155,7 @@ namespace Entregador.Game
         {
             _ui.Build(_input, _minimap != null ? _minimap.Texture : null, SkipRun);
             InitFiscalizacao();
+            InitRetirada();
 
             if (ShowSetupOnStart)
             {
@@ -362,6 +367,7 @@ namespace Entregador.Game
             _flatTireRolled = false;
             _delayMinutes = 0;
             _lastCustomer = CurrentPlan.Customer;
+            BeginRetirada();
 
             State = FlowState.DrivingToRestaurant;
             _ui.HideModal();
@@ -369,7 +375,7 @@ namespace Entregador.Game
             _bike.SetWet(Session.IsRainingToday);
             _bike.SetLocked(false);
             SetTarget(CurrentPlan.Restaurant);
-            _ui.Toast("Pedido aceito! Vá até " + CurrentPlan.Restaurant.Name);
+            _ui.Toast($"Pedido aceito! Vá até {CurrentPlan.Restaurant.Name}. {Retirada.TextoCodigo}");
         }
 
         private void SetTarget(Place place)
@@ -383,6 +389,7 @@ namespace Entregador.Game
         private void Update()
         {
             TickFiscalizacao();
+            TickRetirada();
 
             if (State == FlowState.Offer)
             {
@@ -448,21 +455,11 @@ namespace Entregador.Game
                 return;
             }
 
-            if (State == FlowState.DrivingToRestaurant)
-            {
-                PickUp();
-            }
-            else
+            // No restaurante a retirada é no balcão (TickRetirada): entrar na zona não pega o pedido.
+            if (State == FlowState.DrivingToCustomer)
             {
                 ArriveAtDoor();
             }
-        }
-
-        private void PickUp()
-        {
-            State = FlowState.DrivingToCustomer;
-            SetTarget(CurrentPlan.Customer);
-            _ui.Toast($"Pedido retirado em {CurrentPlan.Restaurant.Name}. Agora leve até {CurrentPlan.Customer.Name}.");
         }
 
         private void ArriveAtDoor()
@@ -508,6 +505,8 @@ namespace Entregador.Game
             }
 
             RunReport report = _tracker.BuildReport(_tuning.WorldToGameKm);
+            report.PenalidadeRetirada = _pickupPenalty;
+            report.MinutosNoBalcao = _pickupMinutes;
             DeliveryResult result = Session.FinishRun(CurrentOrder, report);
             _tracker.ClearRadar();
             FinishRun(result);
@@ -554,6 +553,11 @@ namespace Entregador.Game
                 body.AppendLine("Pagamento: " + result.Pay);
                 body.AppendLine("Gorjeta: " + result.Tip);
                 body.AppendLine("Total: " + result.Total);
+
+                if (_pickupPenalty > 0 && !result.Skipped)
+                {
+                    body.AppendLine($"O cliente reclamou de item faltando no pedido (não conferido no balcão): -{_pickupPenalty} estrela(s).");
+                }
             }
 
             body.AppendLine($"Nota do cliente: {result.Stars} de 5 estrelas");

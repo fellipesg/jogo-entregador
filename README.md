@@ -186,7 +186,7 @@ Para trocar um modelo, mude só o nome em `CityBuilder`/`CityPieces` e regere a 
 
 ### Tempo das corridas
 
-`GameTuning`: `WorldToGameKm = 0,0042` (3,5 km = 830 m de rua; no mapa do OSM as rotas entre restaurantes e endereços chegam a ~1.200 m, então 1,5 a 5,5 km cabem), `ReferenceSpeed = 7 m/s` (tempo previsto = metros / 7; a moto anda no máximo 13 m/s) e `MinPickupMeters = 150`. O `RunPlanner` junta restaurante e endereço cuja rota combina com a distância e, entre os pares quase igualmente bons, prefere o restaurante mais perto da moto (acima do mínimo de busca). Para pedidos de 2 a 5 km, o tempo previsto fica entre cerca de 100 e 235 s; o PlayMode `PlannedRunTimes...` confere.
+`GameTuning`: `WorldToGameKm = 0,0047` (3,5 km = 745 m de rua; com o grafo fechado nas barreiras de obra as rotas entre restaurantes e endereços chegam a ~1.100 m, então 1,5 a 5,5 km cabem), `ReferenceSpeed = 7 m/s` (tempo previsto = metros / 7; a moto anda no máximo 13 m/s) e `MinPickupMeters = 150`. O `RunPlanner` junta restaurante e endereço cuja rota combina com a distância e, entre os pares quase igualmente bons, prefere o restaurante mais perto da moto (acima do mínimo de busca). Para pedidos de 2 a 5 km, o tempo previsto fica entre cerca de 100 e 235 s; o PlayMode `PlannedRunTimes...` confere.
 
 ### Testes de PlayMode e capturas
 
@@ -230,3 +230,11 @@ Pela linha de comando (com o editor fechado neste projeto; não use `-quit`):
 ```
 
 O resultado fica no XML (atributos `total`, `passed` e `failed` em `test-run`).
+
+
+## Retirada no balcão, GPS passo a passo e viatura
+
+- **Retirada** (`Core/Retirada.cs`, `Game/Retirada/`, `Game/UI/BalcaoUI.cs`): o pedido só é retirado depois de parar a moto (menos de 3 km/h) na zona do restaurante, apertar "Retirar pedido" (ou E) e conversar com a atendente (personagem do Mixamo no balcão, `AtendenteRestaurante`). A situação é sorteada com pesos (`RetiradaConfig`): pedido pronto, "tá saindo" (1 a 8 min de espera), pede o código (3 opções; o app mostra o certo no chip e no aviso ao aceitar), pedido trocado (conferir custa 1 min; pegar e sair arrisca 1 a 2 estrelas na entrega) e restaurante lotado (fila). Dá para reclamar no app (cancela, conta como recusa). Os minutos perdidos entram no tempo da corrida e a penalidade em `RunReport.PenalidadeRetirada`.
+- **GPS** (`RouteGuide`, `RoadGraph`, `Core/Navegacao.cs`, `Game/Navegacao/`): `Navegacao` calcula as manobras (vire, mantenha-se, retorno, rotatória, chegada) a partir dos pontos da rota com o nome das ruas (o grafo agora guarda o `name` do OSM); `AnunciadorNavegacao` fala em função da distância e da velocidade ("Em 500 metros...", "Em 200 metros...", "Vire à direita na Rua X"). `RouteGuide.ProximaInstrucao`, `SegundaInstrucao` e o evento `Anunciou` alimentam o cartão de navegação; `VozGps` usa o TextToSpeech do Android (iOS: TODO; no Editor só um "ping"; PlayerPrefs `gps_voz` e `vol_gps`); `SetasGps` pinta a seta da curva no chão e a placa de chevron nas curvas fechadas. O GPS refaz a rota (1,5 s fora dela, 3 s andando ao contrário, ou 0,8 s logo depois de uma esquina errada), com o rumo da moto (evita retorno desnecessário), avisa "Recalculando rota" uma vez por desvio e a cada 10 s troca por uma rota bem mais curta, se houver.
+- **Trechos bloqueados**: o grafo é partido no limite da área jogável (`CityBuilder.GraphLimit`); a parte de fora e todo trecho junto de uma barreira de obra (`ViaBloqueada`) ficam bloqueados e o GPS nunca passa por eles. Beco sem saída só entra na rota se o destino estiver nele.
+- **Viatura** (`PoliceUnit`): na abordagem ela vem atrás com a sirene, casa a velocidade, freia e para 7 m atrás da moto (levemente de lado para o meio-fio); nunca avança a menos de `MinBikeDistance` (4,6 m) da moto, em nenhum modo, e a ronda espera se a moto estiver na frente.

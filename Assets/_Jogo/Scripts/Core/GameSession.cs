@@ -225,6 +225,17 @@ namespace Entregador.Core
             return outcome;
         }
 
+        /// <summary>
+        /// O jogador reclamou no app no balcão do restaurante e cancelou: a entrega acaba sem pagamento nem combustível, e conta como
+        /// recusa na taxa de aceite (o app pune quem cancela depois de aceitar).
+        /// </summary>
+        public void CancelarNaRetirada(Order order)
+        {
+            EnsureAccepted(order);
+            App.Cancel();
+            _current = null;
+        }
+
         /// <summary>Fecha uma corrida dirigida: combustível, dano, multas, pagamento, gorjeta e nota.</summary>
         public DeliveryResult FinishRun(Order order, RunReport report)
         {

@@ -39,6 +39,12 @@ namespace Entregador.Core
             return infracao.HasValue;
         }
 
+        /// <summary>Minutos de jogo perdidos no balcão do restaurante (espera, fila, conferência). Já estão no TimeRatio; fica aqui para o relatório.</summary>
+        public int MinutosNoBalcao;
+
+        /// <summary>Estrelas a menos na nota: pedido trocado ou faltando item levado sem conferir (ver Retirada).</summary>
+        public int PenalidadeRetirada;
+
         /// <summary>O jogador fotografou a entrega na porta do cliente.</summary>
         public bool PhotoTaken;
 
@@ -85,6 +91,8 @@ namespace Entregador.Core
             {
                 stars -= 1;
             }
+
+            stars -= Math.Max(0, report.PenalidadeRetirada);
 
             return Math.Max(1, stars);
         }

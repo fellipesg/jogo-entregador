@@ -422,9 +422,22 @@ namespace Entregador.Editor
                 Vector3 position = Geo.V3(RestaurantSites[k].Marker);
                 GameObject beam = BuildMarker(markers, RestaurantNames[k], position, m.RestaurantPad, m);
                 places[k] = new Place(RestaurantNames[k], position, beam);
+                RestaurantCounter(RestaurantSites[k], out Vector3 counter, out float yaw);
+                places[k].TemBalcao = true;
+                places[k].Balcao = counter;
+                places[k].BalcaoYaw = yaw;
             }
 
             return places;
+        }
+
+        /// <summary>Onde a atendente fica: no terraço, atrás do balcão, a meio da fachada, olhando para a rua.</summary>
+        private static void RestaurantCounter(RestaurantSite site, out Vector3 position, out float yaw)
+        {
+            Vector2 corner = site.FrontStart - site.Front * 3f;
+            var frame = new Frame(Geo.V3(corner, CurbHeight), Geo.V3(site.Front));
+            position = frame.Pt(RestaurantWidth * 0.5f, 0f, -0.6f);
+            yaw = Mathf.Atan2(site.Front.x, site.Front.y) * Mathf.Rad2Deg;
         }
 
         /// <summary>Restaurante: prédio largo recuado do meio-fio (terraço de 3 m) com toldos, porta aberta, letreiro e mesas.</summary>
@@ -447,7 +460,34 @@ namespace Entregador.Editor
                     ExposeRight = true,
                 };
                 CityBuildings.Restaurant(context, new Frame(Geo.V3(corner, CurbHeight), Geo.V3(site.Front)), RestaurantWidth, 11.5f, RestaurantNames[k], k, accent);
+                BuildAttendant(site, k, accent);
             }
+        }
+
+        /// <summary>Balcão de madeira e a atendente (personagem do Mixamo, sem capacete, com avental na cor do restaurante).</summary>
+        private static void BuildAttendant(RestaurantSite site, int k, Color accent)
+        {
+            RestaurantCounter(site, out Vector3 position, out float yaw);
+            var holder = new GameObject("Atendente_" + k);
+            holder.transform.SetParent(_detailsRoot, false);
+            holder.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
+
+            PersonagensCatalogo catalogo = PersonagensBuilder.Garantir();
+            bool woman = k % 2 == 0;
+            GameObject model = catalogo != null ? catalogo.Modelo(woman ? Personagem.Camila : Personagem.Marcao) : null;
+            var npc = holder.AddComponent<AtendenteRestaurante>();
+            npc.Configurar(model, RestaurantNames[k], accent,
+                woman ? new Color(0.72f, 0.52f, 0.42f) : new Color(0.5f, 0.35f, 0.27f),
+                woman ? new Color(0.1f, 0.06f, 0.05f) : new Color(0.06f, 0.05f, 0.05f), woman, k * 1.7f);
+
+            Material wood = CityMaterials.Lit("Balcao_Madeira", new Color(0.45f, 0.3f, 0.18f), 0.25f);
+            Material top = CityMaterials.Lit("Balcao_Tampo", new Color(0.88f, 0.86f, 0.82f), 0.4f);
+            Vector3 forward = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
+            Vector3 counter = position + forward * 1.05f;
+            Quaternion rotation = Quaternion.Euler(0f, yaw, 0f);
+            Prim(PrimitiveType.Cube, holder.transform, "Balcao", counter + Vector3.up * 0.52f, rotation, new Vector3(2.4f, 1.04f, 0.55f), wood);
+            Prim(PrimitiveType.Cube, holder.transform, "BalcaoTampo", counter + Vector3.up * 1.06f, rotation, new Vector3(2.55f, 0.06f, 0.7f), top);
+            Prim(PrimitiveType.Cube, holder.transform, "BalcaoFaixa", counter + forward * 0.285f + Vector3.up * 0.72f, rotation, new Vector3(2.4f, 0.22f, 0.02f), PbrMaterials.Flat("BalcaoFaixa" + k, accent, 0.2f));
         }
 
         // ---------- Frente dos quarteirões ----------

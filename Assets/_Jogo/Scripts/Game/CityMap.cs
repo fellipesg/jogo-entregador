@@ -13,6 +13,11 @@ namespace Entregador.Game
         /// <summary>Feixe de luz que aparece só quando o lugar é o alvo atual.</summary>
         public GameObject Beam;
 
+        /// <summary>Restaurante: onde a atendente fica (balcão na calçada, de frente para a rua) e para onde ela olha (yaw em graus).</summary>
+        public bool TemBalcao;
+        public Vector3 Balcao;
+        public float BalcaoYaw;
+
         public Place(string name, Vector3 position, GameObject beam)
         {
             Name = name;
