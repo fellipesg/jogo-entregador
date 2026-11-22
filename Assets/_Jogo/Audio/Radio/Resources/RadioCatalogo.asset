@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: RadioCatalogo
+  m_EditorClassIdentifier: Entregador.Game:Entregador.Game:RadioCatalogo
+  Estacoes:
+  - Nome: Quebrada FM
+    Genero: Funk e rap
+    Cor: {r: 0.95, g: 0.75, b: 0.1, a: 1}
+    Estilo: 0
+    Faixas: []
+    Vinheta: {fileID: 0}
+  - Nome: Sertanejo 98
+    Genero: Sertanejo
+    Cor: {r: 0.25, g: 0.7, b: 0.3, a: 1}
+    Estilo: 1
+    Faixas: []
+    Vinheta: {fileID: 0}
+  - Nome: "Pared\xE3o Pagode"
+    Genero: Pagode
+    Cor: {r: 0.9, g: 0.35, b: 0.15, a: 1}
+    Estilo: 2
+    Faixas: []
+    Vinheta: {fileID: 0}
+  - Nome: Rock Marginal
+    Genero: Rock
+    Cor: {r: 0.8, g: 0.1, b: 0.15, a: 1}
+    Estilo: 3
+    Faixas: []
+    Vinheta: {fileID: 0}
+  - Nome: Lo-fi Corre
+    Genero: Lo-fi
+    Cor: {r: 0.45, g: 0.5, b: 0.9, a: 1}
+    Estilo: 4
+    Faixas: []
+    Vinheta: {fileID: 0}

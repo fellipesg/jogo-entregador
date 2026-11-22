@@ -48,6 +48,8 @@ namespace Entregador.Game
         private float _yaw;
         private float _steer;
         private float _throttle;
+        private bool _revving;
+        private float _launchTimer;
         private float _lean;
         private float _lastImpactTime = -10f;
         private float _lastBumpTime = -10f;
@@ -87,6 +89,12 @@ namespace Entregador.Game
 
         /// <summary>Giro do motor em rpm (marcha lenta ~1.300 até o corte de giro).</summary>
         public float Rpm => _transmissao.Rpm;
+
+        /// <summary>Parado, com freio e acelerador juntos: embreagem puxada, giro livre ("cortando giro"). O painel pode piscar com isto.</summary>
+        public bool CortandoGiro => _transmissao.Embreagem;
+
+        /// <summary>O limitador de giro está cortando (parado ou rodando no giro máximo).</summary>
+        public bool NoLimitador => _transmissao.NoLimitador;
 
         /// <summary>Marcha engatada pelo câmbio automático, de 1 a 5.</summary>
         public int Gear => _transmissao.Marcha;
@@ -198,8 +206,20 @@ namespace Entregador.Game
             float previousForward = forwardSpeed;
             float wetGrip = IsWet ? 0.75f : 1f;
 
-            if (brake > 0.05f)
+            // Cortando giro: parado (menos de ~3 km/h), freio e acelerador juntos = embreagem puxada.
+            // TODO: a perturbação do sossego (polícia por perto) poderia punir o giro cortado em excesso.
+            bool clutch = free && gas > 0.05f && brake > 0.05f && Mathf.Abs(forwardSpeed) < 0.83f;
+
+            if (clutch)
             {
+                _throttle = gas;
+                _transmissao.StepNeutro(gas, dt);
+                _revving = true;
+                forwardSpeed = Mathf.MoveTowards(forwardSpeed, 0f, _perfil.Freio * dt);
+            }
+            else if (brake > 0.05f)
+            {
+                _revving = false;
                 // Freio combinado: reduz até parar; parado e segurando (sem estar travada), engata a ré devagar.
                 _throttle = 0f;
                 _transmissao.Step(Mathf.Max(0f, forwardSpeed), 0f, dt);
@@ -227,6 +247,14 @@ namespace Entregador.Game
             }
             else
             {
+                if (_revving)
+                {
+                    // Soltou o freio girando alto: arrancada com a roda patinando um pouco.
+                    _revving = false;
+                    _transmissao.IniciarArrancada();
+                    _launchTimer = 0.6f;
+                }
+
                 // Motor, freio-motor, arrasto e rolagem. Sem limitador artificial: a velocidade final sai do equilíbrio.
                 _throttle = gas > 0.05f ? gas : 0f;
                 float engine = _transmissao.Step(forwardSpeed, _throttle, dt);
@@ -234,6 +262,16 @@ namespace Entregador.Game
                 if (IsWet && engine > 0f)
                 {
                     engine *= 0.8f;
+                }
+
+                if (_launchTimer > 0f)
+                {
+                    _launchTimer -= dt;
+
+                    if (engine > 0f)
+                    {
+                        engine *= 1f + 0.3f * Mathf.Clamp01(_launchTimer / 0.6f);
+                    }
                 }
 
                 float resistance = _perfil.Arrasto * forwardSpeed * forwardSpeed + (forwardSpeed > 0.05f ? _perfil.Rolagem : 0f);
