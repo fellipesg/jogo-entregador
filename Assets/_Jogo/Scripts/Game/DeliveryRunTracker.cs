@@ -121,6 +121,12 @@ namespace Entregador.Game
 
         public void Stop() => Running = false;
 
+        /// <summary>Aumenta o tempo previsto (o app tolera parte da demora do restaurante ou do cliente).</summary>
+        public void ExtendExpected(float seconds)
+        {
+            ExpectedSeconds += Mathf.Max(0f, seconds);
+        }
+
         public void AddDelaySeconds(float seconds)
         {
             ElapsedSeconds += Mathf.Max(0f, seconds);

@@ -89,11 +89,11 @@ namespace Entregador.Game.Tests
 
             Flow.PauseGame();
             Assert.IsTrue(Flow.Ui.ClickModalButton("Encerrar turno"));
-            StringAssert.Contains("Encerrar turno?", Flow.Ui.ModalTitle, "Pede confirmação.");
+            StringAssert.Contains("Termine a entrega", Flow.Ui.ModalTitle, "Com entrega ativa o app pede para terminá-la primeiro.");
             Assert.IsTrue(Flow.Ui.ClickModalButton("Voltar"));
             Assert.AreEqual(FlowState.Paused, Flow.State);
             Assert.IsTrue(Flow.Ui.ClickModalButton("Encerrar turno"));
-            Assert.IsTrue(Flow.Ui.ClickModalButton("Encerrar turno"));
+            Assert.IsTrue(Flow.Ui.ClickModalButton("Cancelar entrega e encerrar"));
             Assert.AreEqual(FlowState.ShiftSummary, Flow.State);
             Assert.AreEqual(1f, Time.timeScale);
             yield return null;

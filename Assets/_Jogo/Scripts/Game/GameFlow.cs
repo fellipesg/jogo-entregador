@@ -51,6 +51,12 @@ namespace Entregador.Game
 
         /// <summary>Pausa durante o turno.</summary>
         Paused,
+
+        /// <summary>Turno em andamento, sem pedido: "Online, procurando pedidos". Anda livre; o app chama depois de uma espera.</summary>
+        Online,
+
+        /// <summary>Menu do celular aberto com o turno em andamento e sem pedido (Encerrar turno, Mapa).</summary>
+        OnlineMenu,
     }
 
     /// <summary>
@@ -112,6 +118,50 @@ namespace Entregador.Game
 
         public CityMap Map => _map;
 
+        /// <summary>Pontos de entregadores (roda de conversa).</summary>
+        public PontosDirector Pontos { get; private set; }
+
+        /// <summary>
+        /// Nos diálogos (porta do cliente, balcão, roda de conversa) a câmera deixa de seguir atrás da moto cegamente e enquadra a moto e o
+        /// foco por um ângulo sem parede no caminho (FollowCamera.Enquadrar).
+        /// </summary>
+        private void TickEnquadramento()
+        {
+            if (_followCamera == null || !_followCamera.enabled)
+            {
+                return;
+            }
+
+            Vector3 foco = default;
+            bool tem = false;
+
+            if (State == FlowState.AtDoor && CurrentPlan != null)
+            {
+                foco = CurrentPlan.Customer.Position;
+                tem = true;
+            }
+            else if (State == FlowState.NoBalcao && CurrentPlan != null && _balcao != null && _balcao.DialogueVisible)
+            {
+                Place r = CurrentPlan.Restaurant;
+                foco = r.TemBalcao ? r.Balcao : r.Position;
+                tem = true;
+            }
+            else if (Pontos != null && Pontos.ConversaAberta && Pontos.FocoConversa(out Vector3 f))
+            {
+                foco = f;
+                tem = true;
+            }
+
+            if (tem)
+            {
+                _followCamera.Enquadrar(foco);
+            }
+            else if (_followCamera.Enquadrando)
+            {
+                _followCamera.Soltar();
+            }
+        }
+
         public RouteGuide Route => _route;
 
         public GameTuning Tuning => _tuning;
@@ -172,6 +222,7 @@ namespace Entregador.Game
             InitFiscalizacao();
             InitRetirada();
             InitMenu();
+            Pontos = PontosDirector.Criar(this);
 
             if (ShowSetupOnStart)
             {
@@ -190,6 +241,8 @@ namespace Entregador.Game
         public void NewWeek(int seed = 0, IGameRandom random = null)
         {
             _random = random ?? new SeededRandom(seed != 0 ? seed : Environment.TickCount);
+            _ofertaRandom = new SeededRandom((seed != 0 ? seed : Environment.TickCount) ^ 0x2F6E);
+            ResetOfertas();
             _fromFreeRoam = false;
             Session = new GameSession(_random, EconomyForProfile(), null, null, _perfil.ParaRegras());
             ApplyProfile();
@@ -209,6 +262,13 @@ namespace Entregador.Game
             }
 
             ShowDayStart();
+        }
+
+        /// <summary>Nova semana direto na exploração livre: nenhum painel de dia nem oferta empurra o jogador para o turno.</summary>
+        public void NewWeekToFreeRoam()
+        {
+            NewWeek();
+            EnterFreeRoamFromSetup();
         }
 
         // ---------- Dia ----------
@@ -282,9 +342,19 @@ namespace Entregador.Game
                 return;
             }
 
+            bool viaPhone = _fromFreeRoam;
             Session.TakeDayOff();
             Session.EndDay();
-            ShowDayStart();
+
+            // Pelo celular da exploração livre, a folga devolve o jogador à rua (sem painel do dia seguinte empurrando o turno).
+            if (viaPhone)
+            {
+                AfterShiftEnded();
+            }
+            else
+            {
+                ShowDayStart();
+            }
         }
 
         public void BeginShift()
@@ -307,7 +377,9 @@ namespace Entregador.Game
 
             _deliveriesToday = 0;
             OpenDayFiscalizacao();
-            OfferNext();
+            _ui.HideModal();
+            EnterOnline();
+            _ui.Toast($"Você está online. Boa sorte! {Session.Relogio.Texto}", 3f);
         }
 
         // ---------- Pedidos ----------
@@ -330,6 +402,7 @@ namespace Entregador.Game
             _offerRemaining = _tuning.OfferSeconds;
             _lastShownOfferSecond = -1;
             ShowOffer();
+            OfertaApareceu?.Invoke();
         }
 
         private void ShowOffer()
@@ -368,7 +441,7 @@ namespace Entregador.Game
             Session.Reject(CurrentOrder);
             CurrentOrder = null;
             OfferRefused?.Invoke();
-            OfferNext();
+            EnterOnline();
         }
 
         public void AcceptOffer()
@@ -394,6 +467,8 @@ namespace Entregador.Game
             _bike.SetLocked(false);
             SetTarget(CurrentPlan.Restaurant);
             _ui.Toast($"Pedido aceito! Vá até {CurrentPlan.Restaurant.Name}. {Retirada.TextoCodigo}");
+            OfertaAceita?.Invoke();
+            ArmMidRun();
         }
 
         private void SetTarget(Place place)
@@ -407,6 +482,8 @@ namespace Entregador.Game
         private void Update()
         {
             TickFiscalizacao();
+            TickRelogio();
+            TickEnquadramento();
             TickRetirada();
 
             if (State == FlowState.Offer)
@@ -417,6 +494,12 @@ namespace Entregador.Game
             {
                 TickDriving();
             }
+            else if (State == FlowState.Online)
+            {
+                TickOnline();
+            }
+
+            TickMidRun();
         }
 
         private void TickOffer()
@@ -470,66 +553,7 @@ namespace Entregador.Game
                 }
             }
 
-            if (FlatDistance(_bike.Position, target.Position) > _tuning.MarkerRadius)
-            {
-                return;
-            }
-
-            // No restaurante a retirada é no balcão (TickRetirada): entrar na zona não pega o pedido.
-            if (State == FlowState.DrivingToCustomer)
-            {
-                ArriveAtDoor();
-            }
-        }
-
-        private void ArriveAtDoor()
-        {
-            State = FlowState.AtDoor;
-            _tracker.Pause();
-            _bike.SetLocked(true);
-            _route.ClearTarget();
-            ShowDoorPanel();
-        }
-
-        private void ShowDoorPanel()
-        {
-            string body = $"Você chegou em {CurrentPlan.Customer.Name}." +
-                          (_tracker.PhotoTaken ? "\nFoto da entrega tirada." : "\nTire uma foto da entrega: ela protege você se o cliente reclamar.");
-
-            if (_tracker.PhotoTaken)
-            {
-                _ui.ShowModal("Entrega na porta", body, new PanelButton("Entregar", Deliver));
-            }
-            else
-            {
-                _ui.ShowModal("Entrega na porta", body, new PanelButton("Fotografar", TakePhoto), new PanelButton("Entregar", Deliver));
-            }
-        }
-
-        public void TakePhoto()
-        {
-            if (State != FlowState.AtDoor)
-            {
-                return;
-            }
-
-            _tracker.PhotoTaken = true;
-            ShowDoorPanel();
-        }
-
-        public void Deliver()
-        {
-            if (State != FlowState.AtDoor)
-            {
-                return;
-            }
-
-            RunReport report = _tracker.BuildReport(_tuning.WorldToGameKm);
-            report.PenalidadeRetirada = _pickupPenalty;
-            report.MinutosNoBalcao = _pickupMinutes;
-            DeliveryResult result = Session.FinishRun(CurrentOrder, report);
-            _tracker.ClearRadar();
-            FinishRun(result);
+            // No restaurante a retirada é no balcão (TickRetirada) e no cliente a entrega é na porta (TickEntrega): entrar na zona não basta, tem que parar.
         }
 
         /// <summary>Botão "Pular corrida": a entrega é feita automaticamente, pagando menos.</summary>
@@ -549,13 +573,32 @@ namespace Entregador.Game
             LastResult = result;
             _tracker.Stop();
             EnterIdle();
+            _entrega = null;
 
             if (!result.Spoiled)
             {
                 _deliveriesToday++;
             }
 
+            // Entrega comum: nada de painel. Um aviso com o ganho e o app volta a procurar pedidos (ou segue para o próximo da fila).
+            if (!result.Skipped && !result.Spoiled && result.AfterDeliveryIncident == null)
+            {
+                _ui.Toast(EarningsText(result), 4f);
+                ContinueAfterDelivery();
+
+                return;
+            }
+
             ShowResult(result);
+        }
+
+        private string EarningsText(DeliveryResult result)
+        {
+            string tip = result.Tip > Money.Zero ? $"  ·  gorjeta {result.Tip}" : string.Empty;
+
+            string missing = _pickupPenalty > 0 ? "  ·  cliente reclamou de item faltando" : string.Empty;
+
+            return $"Pedido entregue! +{result.Total}{tip}  ·  nota {result.Stars}{missing}";
         }
 
         private void ShowResult(DeliveryResult result)
@@ -604,8 +647,7 @@ namespace Entregador.Game
                 return;
             }
 
-            CurrentOrder = null;
-            OfferNext();
+            ContinueAfterDelivery();
         }
 
         // ---------- Imprevistos ----------
@@ -684,7 +726,7 @@ namespace Entregador.Game
         private void ResumeAfterTire(IncidentOutcome outcome)
         {
             _delayMinutes += outcome.DelayMinutes;
-            _tracker.AddDelaySeconds(outcome.DelayMinutes * _tuning.SecondsPerGameMinute);
+            _tracker.AddDelaySeconds(outcome.DelayMinutes * SegundosPorMinuto);
             _tracker.Resume();
             _bike.SetLocked(false);
             _runIncident = null;
@@ -698,8 +740,17 @@ namespace Entregador.Game
             _tracker.Stop();
             EnterIdle();
             _runIncident = null;
+            _entrega = null;
             State = FlowState.Result;
             LastResult = null;
+
+            // Pedido duplo: a retirada dos dois caiu junto.
+            if (_proximoDuplo && Session.Proximo != null)
+            {
+                Session.CancelarProximo();
+                ClearProximo();
+            }
+
             _ui.ShowModal(
                 "Entrega cancelada",
                 "Você cancelou a entrega. Sem pagamento, e o cancelamento pesa na sua taxa de aceite.",
@@ -792,7 +843,7 @@ namespace Entregador.Game
             body.Append(TransitoSummary(true));
 
             string button = report.Result == WeekResult.NoVermelho || report.Result == WeekResult.SemMoto ? "Tentar de novo" : "Jogar outra semana";
-            _ui.ShowModal(title, body.ToString().TrimEnd(), new PanelButton(button, () => NewWeek()), new PanelButton("Novo perfil", ShowSetup));
+            _ui.ShowModal(title, body.ToString().TrimEnd(), new PanelButton(button, NewWeekToFreeRoam), new PanelButton("Novo perfil", ShowSetup));
         }
 
         // ---------- Utilidades ----------
@@ -801,6 +852,8 @@ namespace Entregador.Game
         private void EnterIdle()
         {
             ClearRetirada();
+            CloseMidOffer(true);
+            _ui.SetProcurando(false, string.Empty, false);
             _bike.SetLocked(true);
             _input.ClearAll();
             _ui.SetHudVisible(false);
@@ -847,7 +900,7 @@ namespace Entregador.Game
         }
 
         private string DayLabel() =>
-            $"Dia {Session.Day}: {DayName(Session.Day)}" + (Session.IsRainingToday ? " (chuva)" : string.Empty);
+            $"Dia {Session.Day}: {DayName(Session.Day)}" + (Session.IsRainingToday ? " (chuva)" : string.Empty) + " · " + Session.Relogio.Texto;
 
         private static string DayName(int day) => DayNames[Mathf.Clamp(day - 1, 0, DayNames.Length - 1)];
 

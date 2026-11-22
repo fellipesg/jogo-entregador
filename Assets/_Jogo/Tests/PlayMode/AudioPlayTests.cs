@@ -91,9 +91,26 @@ namespace Entregador.Game.Tests
             Assert.IsFalse(Flow.Bike.CortandoGiro);
             Assert.Less(Flow.Bike.Rpm, Flow.Bike.Perfil.RpmMarchaLenta + 400f, "Soltou o acelerador: o giro cai.");
 
-            // Soltar o freio girando alto: arrancada, a moto sai.
+            // Soltar o freio girando alto: arrancada, a moto sai. Antes, deixa a moto parar de verdade: o freio sozinho a põe de ré
+            // devagar, e a embreagem puxada só vale abaixo de ~3 km/h (era isto, e não o limitador, que fazia o teste oscilar).
+            input.ClearAll();
+
+            for (int i = 0; i < 150 && Mathf.Abs(Flow.Bike.SpeedKmh) > 0.5f; i++)
+            {
+                yield return new WaitForFixedUpdate();
+            }
+
             input.SetVirtual(0f, 1f, 1f);
-            yield return new WaitForSeconds(0.8f);
+            yield return new WaitForSeconds(0.4f);
+
+            // A arrancada depende do giro no instante em que o freio solta (o limitador quica a ~13 Hz: no vale a moto sai fraca).
+            // Solta sempre no pico do giro, não num instante de relógio que muda com o tempo do quadro.
+            for (int i = 0; i < 100 && Flow.Bike.Rpm < limit - 60f; i++)
+            {
+                yield return new WaitForFixedUpdate();
+            }
+
+            Assert.GreaterOrEqual(Flow.Bike.Rpm, limit - 60f, "O giro chegou ao pico antes de soltar o freio.");
             input.SetVirtual(0f, 1f, 0f);
             yield return new WaitForSeconds(1.2f);
             Assert.Greater(Flow.Bike.SpeedKmh, 6f, "A arrancada tira a moto do lugar.");

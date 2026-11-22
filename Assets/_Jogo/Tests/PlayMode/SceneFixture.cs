@@ -39,6 +39,10 @@ namespace Entregador.Game.Tests
                 RadioPlayer.Instance.ReiniciarParaTestes();
                 RadioPlayer.Instance.Stream.UsarBackend(null);
             }
+
+            // Os testes de fluxo antigos esperam a oferta logo depois do turno (sem espera nem ofertas extras sozinhas).
+            // Os testes do ritmo de pedidos desligam isto (Flow.OfertasImediatas = false).
+            Flow.OfertasImediatas = true;
         }
 
         protected static Place Restaurant(GameFlow flow) => flow.CurrentPlan.Restaurant;
@@ -77,6 +81,27 @@ namespace Entregador.Game.Tests
             Assert.IsTrue(flow.Balcao.ClickChoice("Pegar o pedido"));
             Assert.AreEqual(FlowState.DrivingToCustomer, flow.State, "Depois do diálogo o pedido é retirado.");
             yield return null;
+        }
+
+        /// <summary>
+        /// Chega ao cliente de verdade: para a moto na zona do endereço, espera o botão "Entregar pedido" e clica. Termina em AtDoor
+        /// (com o diálogo da entrega aberto, na situação pedida; a padrão é "cliente desce").
+        /// </summary>
+        protected IEnumerator ArriveAtCustomer(GameFlow flow, EntregaSituacao situacao = EntregaSituacao.ClienteDesce)
+        {
+            flow.EntregaForcada = situacao;
+            TeleportNear(flow, flow.CurrentPlan.Customer);
+            flow.Bike.GetComponent<Rigidbody>().linearVelocity = Vector3.zero;
+
+            for (int i = 0; i < 60 && !flow.Balcao.PromptVisible; i++)
+            {
+                yield return null;
+            }
+
+            Assert.IsTrue(flow.Balcao.PromptVisible, "Parado na zona do cliente o botão Entregar pedido deveria aparecer.");
+            Assert.AreEqual(FlowState.DrivingToCustomer, flow.State, "Só entrar na zona não entrega o pedido.");
+            Assert.IsTrue(flow.Balcao.ClickPrompt());
+            Assert.AreEqual(FlowState.AtDoor, flow.State);
         }
 
         protected static void TeleportNear(GameFlow flow, Place place)

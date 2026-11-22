@@ -19,6 +19,9 @@ namespace Entregador.Core
         private int _ordersOffered;
         private int _ordersInShift;
         private Order _current;
+        private Order _queued;
+        private Order _extra;
+        private double _shiftStartMinutos;
         private bool _currentAccepted;
         private int _pendingFines;
         private bool _weekEnded;
@@ -50,9 +53,36 @@ namespace Entregador.Core
             Cnh = new Carteira(perfil.TemCnh);
             Wallet = new Wallet(Economy.StartingMoney);
             Day = 1;
+            Relogio = new RelogioJogo(1);
 
             ComprarMoto(perfil.Origem);
         }
+
+        /// <summary>O relógio do jogo (dia e hora): a cena o faz andar; o orçamento do turno e a agenda de pedidos leem dele.</summary>
+        public RelogioJogo Relogio { get; }
+
+        /// <summary>Pedido aceito no meio da corrida, esperando a entrega atual acabar ("Próximo pedido"). No máximo um.</summary>
+        public Order Proximo => _queued;
+
+        /// <summary>Oferta extra no meio da corrida ainda sem resposta.</summary>
+        public Order Adicional => _extra;
+
+        /// <summary>Minutos de jogo desde que o turno começou.</summary>
+        public double MinutosDeTurno => IsShiftActive ? Relogio.Minutos - _shiftStartMinutos : 0;
+
+        /// <summary>O orçamento de tempo do turno acabou (ou o dia chegou ao fim).</summary>
+        public bool TempoEsgotado => IsShiftActive && (MinutosDeTurno >= Economy.ShiftMinutes || Relogio.FimDoDia);
+
+        /// <summary>
+        /// O turno chegou ao fim: nada em andamento nem na fila e o app já ofereceu tudo o que tinha (OrdersForShift) ou o tempo acabou.
+        /// A cena encerra o turno quando isto vira true.
+        /// </summary>
+        public bool TurnoAcabou => IsShiftActive && _current == null && _queued == null && _extra == null
+                                   && (_ordersOffered >= _ordersInShift || TempoEsgotado);
+
+        /// <summary>Dá para oferecer mais um pedido no meio da corrida (há entrega aceita, a fila está livre e o turno ainda tem pedidos e tempo).</summary>
+        public bool PodeOferecerAdicional => IsShiftActive && _current != null && _currentAccepted && _queued == null && _extra == null
+                                             && _ordersOffered < _ordersInShift && !TempoEsgotado;
 
         /// <summary>A CNH do jogador: pontos e suspensão.</summary>
         public Carteira Cnh { get; }
@@ -137,6 +167,7 @@ namespace Entregador.Core
             }
 
             _shiftStarted = true;
+            _shiftStartMinutos = Relogio.Minutos;
             _ordersOffered = 0;
             _ordersInShift = App.OrdersForShift();
 
@@ -166,7 +197,7 @@ namespace Entregador.Core
                 throw new InvalidOperationException("Ainda há um pedido sem resposta.");
             }
 
-            if (_ordersOffered >= _ordersInShift)
+            if (_ordersOffered >= _ordersInShift || TempoEsgotado)
             {
                 return null;
             }
@@ -176,6 +207,87 @@ namespace Entregador.Core
             _currentAccepted = false;
 
             return _current;
+        }
+
+        /// <summary>
+        /// Uma segunda oferta chega com a entrega em andamento (o "próximo pedido" do app). Conta como pedido oferecido do turno e,
+        /// recusada ou vencida, pesa na taxa de aceite como qualquer outra. Null se não pode agora (ver PodeOferecerAdicional).
+        /// </summary>
+        public Order OferecerAdicional()
+        {
+            if (!PodeOferecerAdicional)
+            {
+                return null;
+            }
+
+            _ordersOffered++;
+            _extra = App.Offer(_random, IsRainingToday);
+
+            return _extra;
+        }
+
+        /// <summary>Aceita a oferta extra: vira o "próximo pedido".</summary>
+        public void AceitarAdicional(Order order)
+        {
+            EnsureExtra(order);
+            App.Accept();
+            _queued = _extra;
+            _extra = null;
+        }
+
+        /// <summary>Recusa (ou deixa vencer) a oferta extra.</summary>
+        public void RecusarAdicional(Order order)
+        {
+            EnsureExtra(order);
+            _extra = null;
+        }
+
+        /// <summary>A entrega atual acabou: o próximo pedido vira o pedido em andamento. Null se não há fila.</summary>
+        public Order PromoverProximo()
+        {
+            EnsureShiftActive();
+
+            if (_current != null)
+            {
+                throw new InvalidOperationException("Ainda há um pedido em andamento.");
+            }
+
+            if (_queued == null)
+            {
+                return null;
+            }
+
+            _current = _queued;
+            _currentAccepted = true;
+            _queued = null;
+
+            return _current;
+        }
+
+        /// <summary>O próximo pedido cai junto com o atual (pedido duplo cancelado no balcão): conta como cancelamento.</summary>
+        public void CancelarProximo()
+        {
+            if (_queued != null)
+            {
+                App.Cancel();
+                _queued = null;
+            }
+        }
+
+        /// <summary>
+        /// Encerra o turno com a corrida no meio: a entrega em andamento e o próximo pedido são cancelados (pesam no aceite) e a oferta
+        /// sem resposta some. A cena chama quando o jogador abandona o turno.
+        /// </summary>
+        public void AbandonarTurno()
+        {
+            if (_current != null && _currentAccepted)
+            {
+                App.Cancel();
+            }
+
+            _current = null;
+            _extra = null;
+            CancelarProximo();
         }
 
         public void Accept(Order order)
@@ -265,9 +377,9 @@ namespace Entregador.Core
             }
 
             int stars = RatingRules.Stars(report, order.IsRaining, HasRaincoat);
-            Money tip = RollTip(stars, report.TimeRatio);
+            Money tip = RollTip(stars, report.TimeRatio, report.FatorGorjeta);
 
-            return Complete(order, order.Pay, tip, stars, false, report.PhotoTaken);
+            return Complete(order, order.Pay, tip, stars, false, report.PhotoTaken, report.RiscoNaoRecebeu);
         }
 
         /// <summary>Entrega automática: paga menos, sem gorjeta nem foto, e a nota depende só do atraso.</summary>
@@ -342,6 +454,9 @@ namespace Entregador.Core
             }
 
             Day++;
+            _queued = null;
+            _extra = null;
+            Relogio.Reiniciar(Math.Min(Day, Economy.DaysPerWeek));
             EntregarMultasPendentes();
             _shiftStarted = false;
             _dayClosed = false;
@@ -510,6 +625,8 @@ namespace Entregador.Core
                 }
 
                 _current = null;
+                _extra = null;
+                CancelarProximo();
             }
 
             if (outcome.EncerraDia)
@@ -707,7 +824,7 @@ namespace Entregador.Core
                 CustoPatio, _multasPagas.ToArray(), _registrosAbordagem.ToArray());
         }
 
-        private DeliveryResult Complete(Order order, Money pay, Money tip, int stars, bool skipped, bool photoTaken)
+        private DeliveryResult Complete(Order order, Money pay, Money tip, int stars, bool skipped, bool photoTaken, double riscoNaoRecebeu = 0)
         {
             Wallet.Credit(Day, LedgerCategory.Entrega, pay, $"Entrega #{order.Id}");
 
@@ -721,12 +838,12 @@ namespace Entregador.Core
 
             _paid[order.Id] = pay + tip;
 
-            Incident incident = _incidents.RollAfterDelivery(_random, photoTaken);
+            Incident incident = _incidents.RollAfterDelivery(_random, photoTaken, riscoNaoRecebeu);
 
             return new DeliveryResult(order, pay, tip, stars, false, skipped, incident);
         }
 
-        private Money RollTip(int stars, double timeRatio)
+        private Money RollTip(int stars, double timeRatio, double fator = 1)
         {
             Money max;
 
@@ -743,7 +860,9 @@ namespace Entregador.Core
                 return Money.Zero;
             }
 
-            return max * (decimal)_random.NextDouble();
+            Money tip = max * (decimal)(_random.NextDouble() * Math.Max(0, fator));
+
+            return tip > App.Config.MaxTip ? App.Config.MaxTip : tip;
         }
 
         private void DebitFuel(double km)
@@ -792,6 +911,16 @@ namespace Entregador.Core
             if (_current == null || _currentAccepted || order == null || order.Id != _current.Id)
             {
                 throw new InvalidOperationException("Este pedido não está aguardando resposta.");
+            }
+        }
+
+        private void EnsureExtra(Order order)
+        {
+            EnsureShiftActive();
+
+            if (_extra == null || order == null || order.Id != _extra.Id)
+            {
+                throw new InvalidOperationException("Esta oferta extra não está aguardando resposta.");
             }
         }
 

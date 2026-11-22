@@ -45,6 +45,18 @@ namespace Entregador.Core
         /// <summary>Estrelas a menos na nota: pedido trocado ou faltando item levado sem conferir (ver Retirada).</summary>
         public int PenalidadeRetirada;
 
+        /// <summary>Minutos de jogo perdidos na porta do cliente (espera, interfone, discussão). Já estão no TimeRatio; fica aqui para o relatório.</summary>
+        public int MinutosNaEntrega;
+
+        /// <summary>Estrelas a menos na nota: cliente irritado ou deixou na portaria de um cliente que esperava (ver Entrega).</summary>
+        public int PenalidadeEntrega;
+
+        /// <summary>Multiplicador da gorjeta vindo da conversa na porta (1 normal; subir ao apartamento paga melhor). Nunca passa de MaxTip.</summary>
+        public double FatorGorjeta = 1;
+
+        /// <summary>Chance extra de "cliente diz que não recebeu" (pedido deixado na portaria).</summary>
+        public double RiscoNaoRecebeu;
+
         /// <summary>Registra um avanço de sinal vermelho pego por fotossensor (a multa chega dias depois, como a do radar).</summary>
         public void AddAvancoSinal()
         {
@@ -99,6 +111,7 @@ namespace Entregador.Core
             }
 
             stars -= Math.Max(0, report.PenalidadeRetirada);
+            stars -= Math.Max(0, report.PenalidadeEntrega);
 
             return Math.Max(1, stars);
         }

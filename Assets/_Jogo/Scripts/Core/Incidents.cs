@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Entregador.Core
@@ -73,9 +74,9 @@ namespace Entregador.Core
         }
 
         /// <summary>Sem foto da entrega, a opção de mostrar a foto não aparece.</summary>
-        public Incident RollAfterDelivery(IGameRandom random, bool photoTaken)
+        public Incident RollAfterDelivery(IGameRandom random, bool photoTaken, double riscoExtra = 0)
         {
-            if (!random.Chance(NotReceivedChance))
+            if (!random.Chance(NotReceivedChance + Math.Max(0, riscoExtra)))
             {
                 return null;
             }

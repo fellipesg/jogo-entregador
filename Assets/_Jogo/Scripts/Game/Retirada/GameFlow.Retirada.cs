@@ -14,6 +14,9 @@ namespace Entregador.Game
         /// <summary>Velocidade (km/h) abaixo da qual a moto conta como parada no balcão.</summary>
         public const float StopKmh = 3f;
 
+        /// <summary>Fração da demora (do restaurante ou do cliente) que o app perdoa no tempo previsto da entrega.</summary>
+        private const float DelayTolerance = 0.8f;
+
         private const string OlharCodigo = "Olhar o código no app";
 
         private BalcaoUI _balcao;
@@ -59,7 +62,7 @@ namespace Entregador.Game
         /// <summary>Um pedido aceito: nasce a retirada, com o código que o app mostra.</summary>
         private void BeginRetirada()
         {
-            _retirada = new Retirada(CurrentOrder, CurrentPlan.Restaurant.Name, _random);
+            _retirada = new Retirada(CurrentOrder, CurrentPlan.Restaurant.Name, _random, ConfigDoBalcao(CurrentPlan.Restaurant.Name));
             _pickupPenalty = 0;
             _pickupMinutes = 0;
             _waitElapsed = 0f;
@@ -71,6 +74,13 @@ namespace Entregador.Game
         {
             if (_balcao == null)
             {
+                return;
+            }
+
+            if (State == FlowState.DrivingToCustomer || State == FlowState.AtDoor)
+            {
+                TickEntrega();
+
                 return;
             }
 
@@ -209,9 +219,9 @@ namespace Entregador.Game
                     break;
                 case RetiradaPasso.Espera:
                     _waitElapsed = 0f;
-                    _waitTotal = Mathf.Max(0.1f, _retirada.EsperaMinutos * _tuning.SecondsPerGameMinute);
+                    _waitTotal = Mathf.Max(0.1f, _retirada.EsperaMinutos * SegundosPorMinuto);
                     _balcao.SetCodeHint(null);
-                    _balcao.ShowWait(_retirada.Fala, 0f, WaitLabel());
+                    _balcao.ShowWait(_retirada.FalaEspera(0f), 0f, WaitLabel());
 
                     break;
                 default:
@@ -223,7 +233,7 @@ namespace Entregador.Game
 
         private string WaitLabel()
         {
-            int left = Mathf.CeilToInt((_waitTotal - _waitElapsed) / Mathf.Max(0.01f, _tuning.SecondsPerGameMinute));
+            int left = Mathf.CeilToInt((_waitTotal - _waitElapsed) / Mathf.Max(0.01f, SegundosPorMinuto));
 
             return $"Aguardando... {Mathf.Max(0, left)} min";
         }
@@ -231,7 +241,7 @@ namespace Entregador.Game
         private void TickWait()
         {
             _waitElapsed += Time.deltaTime;
-            _balcao.ShowWait(_retirada.Fala, _waitElapsed / _waitTotal, WaitLabel());
+            _balcao.ShowWait(_retirada.FalaEspera(_waitElapsed / _waitTotal), _waitElapsed / _waitTotal, WaitLabel());
 
             if (_waitElapsed >= _waitTotal)
             {
@@ -248,7 +258,8 @@ namespace Entregador.Game
             if (_pickupMinutes > 0)
             {
                 _delayMinutes += _pickupMinutes;
-                _tracker.AddDelaySeconds(_pickupMinutes * _tuning.SecondsPerGameMinute);
+                _tracker.AddDelaySeconds(_pickupMinutes * SegundosPorMinuto);
+                _tracker.ExtendExpected(_pickupMinutes * SegundosPorMinuto * DelayTolerance);
             }
 
             _balcao.HideDialogue();
@@ -257,6 +268,14 @@ namespace Entregador.Game
             _tracker.Resume();
             _bike.SetLocked(false);
             SetTarget(CurrentPlan.Customer);
+
+            if (_proximoDuplo && Session.Proximo != null)
+            {
+                _ui.Toast($"Você retirou os dois pedidos em {CurrentPlan.Restaurant.Name}. Entregue em {CurrentPlan.Customer.Name}; depois siga para {_proximoPlan.Customer.Name}.", 4f);
+
+                return;
+            }
+
             string lost = _pickupMinutes > 0 ? $" ({_pickupMinutes} min no balcão)" : string.Empty;
             _ui.Toast($"Pedido retirado em {CurrentPlan.Restaurant.Name}{lost}. Agora leve até {CurrentPlan.Customer.Name}.", 3.5f);
         }

@@ -343,9 +343,7 @@ namespace Entregador.Game.Tests
             Assert.AreEqual(Infracao.ExcessoVelocidadeAte20, report.Capturas[0]);
 
             yield return PickUpOrder(Flow);
-            TeleportNear(Flow, Flow.CurrentPlan.Customer);
-            yield return new WaitForSeconds(0.2f);
-            Assert.AreEqual(FlowState.AtDoor, Flow.State);
+            yield return ArriveAtCustomer(Flow);
             Flow.Deliver();
             Assert.AreEqual(1, Flow.Session.MultasPendentes.Count, "A multa de radar fica na fila do Core.");
             Assert.Greater(Flow.Session.MultasPendentes[0].DiaChegada, Flow.Session.Day);
@@ -478,6 +476,11 @@ namespace Entregador.Game.Tests
 
         // ---------- Polícia ----------
 
+        private static string GetPath(Transform t)
+        {
+            return t.parent == null ? t.name : GetPath(t.parent) + "/" + t.name;
+        }
+
         [UnityTest]
         public IEnumerator PatrolOnlySeesWhatIsNearAndInTheOpen()
         {
@@ -485,11 +488,33 @@ namespace Entregador.Game.Tests
             Assert.IsNotNull(patrol, "A cidade tem uma viatura de ronda.");
             Assert.IsTrue(patrol.HasPatrolRoute);
 
+            // Os entregadores parados (PontosDirector) também bloqueiam a visão; este teste é do largo aberto.
+            Object.FindFirstObjectByType<PontosDirector>().gameObject.SetActive(false);
+
+            // O trânsito em circuito e a própria ronda se mexem: um carro cruzando a linha de visão (ou a viatura andando entre o
+            // teleporte e a leitura) fazia o teste falhar de vez em quando. Congela os dois para a linha ser sempre a mesma.
+            foreach (TrafficLoop car in Object.FindObjectsByType<TrafficLoop>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            {
+                car.gameObject.SetActive(false);
+            }
+
+            patrol.enabled = false;
             Vector3 spot = View("largo").Position;
             Flow.Bike.Teleport(new Vector3(spot.x, 0.1f, spot.z), 0f);
-            patrol.transform.position = spot + new Vector3(0f, 0f, 14f);
+
+            // A viatura é movida pelo Rigidbody a cada passo da física: mexer só no transform deixava a ronda voltar ao trajeto dela
+            // antes da leitura (a causa real da oscilação). Posiciona o corpo e deixa a ronda desligada.
+            Vector3 patrolPos = spot + new Vector3(0f, 0f, 14f);
+            var patrolBody = patrol.GetComponent<Rigidbody>();
+            patrolBody.position = patrolPos;
+            patrolBody.linearVelocity = Vector3.zero;
+            patrolBody.angularVelocity = Vector3.zero;
+            patrol.transform.position = patrolPos;
+            Physics.SyncTransforms();
             yield return new WaitForFixedUpdate();
-            Assert.IsTrue(patrol.CanSee(Flow.Bike.Position, 40f), "No largo aberto, a 14 m, a viatura vê.");
+            string quem = Physics.Linecast(patrol.transform.position + Vector3.up * 1.6f, Flow.Bike.Position + Vector3.up, out RaycastHit bloqueio, ~0, QueryTriggerInteraction.Ignore)
+                ? GetPath(bloqueio.collider.transform) : "nada";
+            Assert.IsTrue(patrol.CanSee(Flow.Bike.Position, 40f), "No largo aberto, a 14 m, a viatura vê. Bloqueio: " + quem + " bike=" + Flow.Bike.Position + " patrol=" + patrol.transform.position);
             Assert.IsFalse(patrol.CanSee(Flow.Bike.Position, 10f), "Mais longe que o alcance: não vê.");
         }
 
@@ -517,7 +542,7 @@ namespace Entregador.Game.Tests
             Assert.AreEqual(FlowState.DrivingToRestaurant, Flow.State);
             Assert.IsFalse(Flow.Bike.Locked);
             Assert.IsTrue(Flow.Tracker.Running);
-            Assert.GreaterOrEqual(Flow.Tracker.ElapsedSeconds, 10f * Flow.Tuning.SecondsPerGameMinute - 0.1f, "O atraso da parada soma ao tempo da corrida.");
+            Assert.GreaterOrEqual(Flow.Tracker.ElapsedSeconds, 10f * Flow.SegundosPorMinuto - 0.1f, "O atraso da parada soma ao tempo da corrida.");
         }
 
         // ---------- Blitz ----------

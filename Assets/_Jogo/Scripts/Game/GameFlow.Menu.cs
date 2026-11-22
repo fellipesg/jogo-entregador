@@ -23,8 +23,13 @@ namespace Entregador.Game
         private bool _cornerPause;
         private bool _cornerSet;
 
+        /// <summary>
+        /// Mostra o botão de debug "Pular corrida". Desligado no jogo normal; liga com a variável de ambiente JOGO_DEBUG=1 ou por código.
+        /// </summary>
+        public static bool DebugPularCorrida = System.Environment.GetEnvironmentVariable("JOGO_DEBUG") == "1";
+
         /// <summary>Andando de moto: corrida (pedido em andamento) ou exploração livre.</summary>
-        public bool IsRoaming => IsDriving || State == FlowState.FreeRoam;
+        public bool IsRoaming => IsDriving || State == FlowState.FreeRoam || State == FlowState.Online;
 
         private void InitMenu()
         {
@@ -253,6 +258,14 @@ namespace Entregador.Game
             {
                 CloseFreeRoamMenu();
             }
+            else if (State == FlowState.Online)
+            {
+                OpenOnlineMenu();
+            }
+            else if (State == FlowState.OnlineMenu)
+            {
+                CloseOnlineMenu();
+            }
             else if (IsDriving)
             {
                 PauseGame();
@@ -276,6 +289,14 @@ namespace Entregador.Game
             else if (State == FlowState.FreeRoam)
             {
                 OpenPhoneMenu();
+            }
+            else if (State == FlowState.Online)
+            {
+                OpenOnlineMenu();
+            }
+            else if (State == FlowState.OnlineMenu)
+            {
+                CloseOnlineMenu();
             }
         }
 
@@ -390,12 +411,13 @@ namespace Entregador.Game
             _bike.SetLocked(false);
         }
 
+        /// <summary>Com entrega em andamento o app pede para terminá-la primeiro; abandonar cancela e pesa na taxa de aceite.</summary>
         private void AskEndShift()
         {
-            _ui.ShowModal("Encerrar turno?",
-                "A entrega em andamento será cancelada, sem pagamento, e o cancelamento pesa na sua taxa de aceite. Os pedidos que faltam ficam para o app.",
-                new PanelButton("Encerrar turno", ConfirmEndShift),
-                new PanelButton("Voltar", ShowPauseModal));
+            _ui.ShowModal("Termine a entrega primeiro",
+                "Você tem uma entrega em andamento. Termine antes de encerrar o turno. Se abandonar agora, ela (e o próximo pedido, se houver) será cancelada, sem pagamento, e pesa na sua taxa de aceite.",
+                new PanelButton("Voltar", ShowPauseModal),
+                new PanelButton("Cancelar entrega e encerrar", ConfirmEndShift));
         }
 
         public void ConfirmEndShift()
@@ -407,7 +429,9 @@ namespace Entregador.Game
 
             Time.timeScale = 1f;
             _tracker.Stop();
-            Session.App.Cancel();
+            CloseMidOffer(true);
+            Session.AbandonarTurno();
+            ClearProximo();
             CurrentOrder = null;
             ShowShiftSummary();
         }
@@ -503,7 +527,7 @@ namespace Entregador.Game
                 _ui.SetMenuButton(pause, OnCornerButton);
             }
 
-            _ui.SetSkipVisible(IsDriving);
+            _ui.SetSkipVisible(IsDriving && DebugPularCorrida);
             _ui.SetHeading(_bike.Yaw);
             TransitoMonitor m = _monitor;
             _ui.SetRacingData(_bike.Rpm, _bike.Gear, _bike.RpmLimit, _bike.Throttle, _bike.Brake, m != null ? m.LimitKmh : 0,
@@ -511,6 +535,11 @@ namespace Entregador.Game
 
             FeedNavegacao();
             FeedSinal();
+
+            if (Session != null)
+            {
+                FeedOfertasHud();
+            }
 
             if (Time.unscaledTime - _lastInfoTime > 0.1f)
             {
@@ -593,7 +622,17 @@ namespace Entregador.Game
             }
 
             p.Saldo = Session.Wallet.Balance.ToString();
-            p.Dia = State == FlowState.FreeRoam || State == FlowState.FreeRoamMenu ? $"Dia {Session.Day}: {DayName(Session.Day)} (turno não iniciado)" : DayLabel();
+            p.Dia = State == FlowState.FreeRoam || State == FlowState.FreeRoamMenu ? $"Dia {Session.Day}: {DayName(Session.Day)} · {Session.Relogio.Texto} (turno não iniciado)" : DayLabel();
+
+            if (State == FlowState.Online || State == FlowState.OnlineMenu)
+            {
+                p.Modo = "Online: procurando pedidos";
+            }
+
+            if (Session.Proximo != null && _proximoPlan != null)
+            {
+                p.Proximo = (_proximoDuplo ? "Duplo: " : string.Empty) + _proximoPlan.Restaurant.Name + " para " + _proximoPlan.Customer.Name + "  ·  " + Session.Proximo.Pay;
+            }
             p.EntregasFeitas = Session.App.DeliveriesThisWeek;
             p.EntregasMeta = Session.App.Config.GoalDeliveries;
             p.Nota = (float)Session.App.Rating;

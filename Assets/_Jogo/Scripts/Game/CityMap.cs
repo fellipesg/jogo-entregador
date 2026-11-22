@@ -142,7 +142,65 @@ namespace Entregador.Game
         {
             SetBeams(_restaurants, target);
             SetBeams(_customers, target);
+            AtualizarMarcador(target);
         }
+
+        private AlvoMarcador _marcador;
+
+        /// <summary>Anel fino e pino sobre a porta, só para o alvo atual (no lugar dos discos grandes da cena antiga, que são apagados).</summary>
+        private void AtualizarMarcador(Place target)
+        {
+            if (_marcador == null)
+            {
+                foreach (Transform t in GetComponentsInChildren<Transform>(true))
+                {
+                    if (t.name == "Disco")
+                    {
+                        t.gameObject.SetActive(false);
+                    }
+                }
+
+                foreach (Place p in _restaurants)
+                {
+                    EsconderDisco(p);
+                }
+
+                foreach (Place p in _customers)
+                {
+                    EsconderDisco(p);
+                }
+
+                _marcador = AlvoMarcador.Criar(transform);
+            }
+
+            if (target == null)
+            {
+                _marcador.Esconder();
+
+                return;
+            }
+
+            Vector3 centro = target.Position;
+            Vector3 porta = target.TemBalcao ? target.Balcao : target.Position;
+            _marcador.Mostrar(centro, porta);
+        }
+
+        private static void EsconderDisco(Place place)
+        {
+            if (place.Beam == null || place.Beam.transform.parent == null)
+            {
+                return;
+            }
+
+            Transform disco = place.Beam.transform.parent.Find("Disco");
+
+            if (disco != null)
+            {
+                disco.gameObject.SetActive(false);
+            }
+        }
+
+        public AlvoMarcador Marcador => _marcador;
 
         private static void SetBeams(Place[] places, Place target)
         {
@@ -150,7 +208,8 @@ namespace Entregador.Game
             {
                 if (place.Beam != null)
                 {
-                    place.Beam.SetActive(place == target);
+                    // O feixe amarelo de 30 m tampava a moto nos diálogos: o AlvoMarcador (anel + pino) o substitui.
+                    place.Beam.SetActive(false);
                 }
             }
         }
