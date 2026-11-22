@@ -39,6 +39,12 @@ namespace Entregador.Core
             return infracao.HasValue;
         }
 
+        /// <summary>Registra um avanço de sinal vermelho pego por fotossensor (a multa chega dias depois, como a do radar).</summary>
+        public void AddAvancoSinal()
+        {
+            Capturas.Add(Infracao.AvancarSinalVermelho);
+        }
+
         /// <summary>O jogador fotografou a entrega na porta do cliente.</summary>
         public bool PhotoTaken;
 

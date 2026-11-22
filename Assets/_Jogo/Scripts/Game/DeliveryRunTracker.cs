@@ -92,6 +92,19 @@ namespace Entregador.Game
             return Running && _radar.AddRadar(measuredKmh, limitKmh);
         }
 
+        /// <summary>Um fotossensor flagrou o avanço do sinal vermelho. Só vale com a corrida em andamento.</summary>
+        public bool RegisterRedLight()
+        {
+            if (!Running)
+            {
+                return false;
+            }
+
+            _radar.AddAvancoSinal();
+
+            return true;
+        }
+
         /// <summary>Entrega as capturas à sessão (FinishRun) e zera a lista. Capturas de uma corrida cancelada ficam para a próxima.</summary>
         public void ClearRadar()
         {
