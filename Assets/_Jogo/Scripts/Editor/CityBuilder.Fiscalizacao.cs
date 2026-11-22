@@ -35,6 +35,7 @@ namespace Entregador.Editor
         {
             var all = new List<ViewPoint>(views);
             all.AddRange(FiscalViews);
+            all.AddRange(SemaforoViews);
 
             return all.ToArray();
         }

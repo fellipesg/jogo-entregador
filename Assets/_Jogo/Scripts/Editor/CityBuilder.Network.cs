@@ -894,35 +894,9 @@ namespace Entregador.Editor
         private static void BuildSignals(OsmMap map)
         {
             var signalPositions = new List<Vector2>();
-            int seed = 0;
 
-            foreach (OsmNode node in map.Nodes)
-            {
-                if (node.Tag("highway") != "traffic_signals" || !map.InsideBox(node.Pos))
-                {
-                    continue;
-                }
-
-                foreach (SignalArm arm in SignalArms(node.Pos))
-                {
-                    if (!arm.Approach || arm.Length < arm.StopDistance + 4f)
-                    {
-                        continue;
-                    }
-
-                    // Poste à direita de quem chega, antes da faixa de pedestre; o braço atravessa a pista.
-                    Vector2 approachDir = -arm.Dir;
-                    Vector2 rightSide = Geo.Right(approachDir);
-                    float ext = arm.Road.ExtToward(arm.Index, rightSide);
-                    Vector2 corner = arm.Node + arm.Dir * arm.StopDistance + rightSide * (ext + 0.7f);
-                    corner = PushToSidewalk(corner, rightSide);
-                    float y = SidewalkHeightAt(corner);
-                    MeshBatch b = BuildBatch(Geo.V3(corner));
-                    TrafficLight(b, Geo.V3(corner, y), Geo.V3(-rightSide), Geo.V3(arm.Dir), seed++);
-                    SolidCapsule(_signalRoot, "Semaforo", Geo.V3(corner, y), 0.2f, 3f);
-                    signalPositions.Add(corner);
-                }
-            }
+            // Semáforos de verdade (ciclo, lentes acesas, linha de retenção, fotossensor): ver CityBuilder.Semaforos.
+            signalPositions.AddRange(BuildSemaforos(map));
 
             // Placas de PARE: rua pequena que encontra uma maior, no braço que chega ao cruzamento.
             int stops = 0;

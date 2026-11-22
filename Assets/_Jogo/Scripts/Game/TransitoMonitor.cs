@@ -10,7 +10,7 @@ namespace Entregador.Game
     /// menos de PoliceSightMeters, com linha de visão livre, dispara FlagranteVisto. Quem anda na contramão também corre o risco de
     /// dar de cara com um carro vindo de frente (ver SpawnOncoming).
     ///
-    /// Semáforos: os da cidade são só visuais (não têm ciclo), então avançar o sinal vermelho não é detectado.
+    /// Semáforos: o avanço do sinal vermelho é detectado pelo SemaforoFiscal, que chama ReportarInfracao (a polícia só autua se vê).
     /// Contramão em avenida de mão dupla (lado errado) também não: só ruas de sentido único.
     /// </summary>
     public sealed class TransitoMonitor : MonoBehaviour
@@ -138,6 +138,30 @@ namespace Entregador.Game
                     FlagranteVisto?.Invoke(CurrentInfraction.Value, watcher);
                 }
             }
+        }
+
+        /// <summary>
+        /// Uma infração instantânea (avançar o sinal vermelho, vista pelo SemaforoFiscal) que só vale se uma viatura de ronda enxerga a moto.
+        /// Respeita o tempo de espera depois de uma abordagem. Devolve true se a polícia viu e o flagrante foi disparado.
+        /// </summary>
+        public bool ReportarInfracao(Infracao infracao)
+        {
+            if (!Active || _bike == null || Time.time < _cooldownUntil)
+            {
+                return false;
+            }
+
+            PoliceUnit watcher = FindWatcher(_bike.Position);
+
+            if (watcher == null)
+            {
+                return false;
+            }
+
+            Cooldown(45f);
+            FlagranteVisto?.Invoke(infracao, watcher);
+
+            return true;
         }
 
         private bool IsInBusLane(Vector3 position, Vector3 heading)

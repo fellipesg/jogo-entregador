@@ -304,6 +304,8 @@ namespace Entregador.Game.Tests
             var random = new ScriptedRandom();
             yield return StartRun(random, false);
 
+            // O fiscal de semáforos fica de fora: a moto teletransportada pode cruzar uma linha no vermelho de um cruzamento com fotossensor.
+            Object.FindFirstObjectByType<SemaforoFiscal>().enabled = false;
             SpeedCamera[] radars = Object.FindObjectsByType<SpeedCamera>(FindObjectsSortMode.None);
             Assert.GreaterOrEqual(radars.Length, 6, "A cidade deveria ter de 6 a 8 radares.");
             Assert.LessOrEqual(radars.Length, 8);

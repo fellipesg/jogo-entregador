@@ -38,6 +38,11 @@ namespace Entregador.Game
 
         public bool Stopped { get; private set; }
 
+        /// <summary>Freando ou parado numa linha de retenção por causa do semáforo (vermelho ou amarelo).</summary>
+        public bool WaitingAtSignal { get; private set; }
+
+        [System.NonSerialized] private SemaforoAproximacao _commitment;
+
         public float CruiseSpeed => _speed;
 
         /// <summary>Distância (m) até o próximo ponto da volta; os testes usam para evitar esquinas.</summary>
@@ -99,7 +104,18 @@ namespace Entregador.Game
 
             Vector3 forward = Quaternion.Euler(0f, _yaw, 0f) * Vector3.forward;
             Stopped = PlayerAhead(position, forward) || CarAhead(position, forward);
-            _currentSpeed = Mathf.MoveTowards(_currentSpeed, Stopped ? 0f : _speed, _acceleration * dt);
+
+            // Semáforo: no vermelho (e no amarelo, se dá para parar) chega parado à linha de retenção.
+            float target = _speed;
+            WaitingAtSignal = false;
+
+            if (Semaforo.ParaCarro(position, forward, _currentSpeed, ref _commitment, out float signalCap))
+            {
+                target = Mathf.Min(target, signalCap);
+                WaitingAtSignal = true;
+            }
+
+            _currentSpeed = Mathf.MoveTowards(_currentSpeed, Stopped ? 0f : target, _acceleration * dt);
 
             _body.MovePosition(position + forward * (_currentSpeed * dt));
             _body.MoveRotation(Quaternion.Euler(0f, _yaw, 0f));
