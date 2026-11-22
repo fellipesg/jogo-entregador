@@ -23,6 +23,11 @@ namespace Entregador.Game
         private bool _cornerPause;
         private bool _cornerSet;
 
+        /// <summary>
+        /// Mostra o botão de debug "Pular corrida". Desligado no jogo normal; liga com a variável de ambiente JOGO_DEBUG=1 ou por código.
+        /// </summary>
+        public static bool DebugPularCorrida = System.Environment.GetEnvironmentVariable("JOGO_DEBUG") == "1";
+
         /// <summary>Andando de moto: corrida (pedido em andamento) ou exploração livre.</summary>
         public bool IsRoaming => IsDriving || State == FlowState.FreeRoam || State == FlowState.Online;
 
@@ -510,7 +515,7 @@ namespace Entregador.Game
                 _ui.SetMenuButton(pause, OnCornerButton);
             }
 
-            _ui.SetSkipVisible(IsDriving);
+            _ui.SetSkipVisible(IsDriving && DebugPularCorrida);
             _ui.SetHeading(_bike.Yaw);
             TransitoMonitor m = _monitor;
             _ui.SetRacingData(_bike.Rpm, _bike.Gear, _bike.RpmLimit, _bike.Throttle, _bike.Brake, m != null ? m.LimitKmh : 0,

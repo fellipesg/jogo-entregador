@@ -118,6 +118,50 @@ namespace Entregador.Game
 
         public CityMap Map => _map;
 
+        /// <summary>Pontos de entregadores (roda de conversa).</summary>
+        public PontosDirector Pontos { get; private set; }
+
+        /// <summary>
+        /// Nos diálogos (porta do cliente, balcão, roda de conversa) a câmera deixa de seguir atrás da moto cegamente e enquadra a moto e o
+        /// foco por um ângulo sem parede no caminho (FollowCamera.Enquadrar).
+        /// </summary>
+        private void TickEnquadramento()
+        {
+            if (_followCamera == null || !_followCamera.enabled)
+            {
+                return;
+            }
+
+            Vector3 foco = default;
+            bool tem = false;
+
+            if (State == FlowState.AtDoor && CurrentPlan != null)
+            {
+                foco = CurrentPlan.Customer.Position;
+                tem = true;
+            }
+            else if (State == FlowState.NoBalcao && CurrentPlan != null && _balcao != null && _balcao.DialogueVisible)
+            {
+                Place r = CurrentPlan.Restaurant;
+                foco = r.TemBalcao ? r.Balcao : r.Position;
+                tem = true;
+            }
+            else if (Pontos != null && Pontos.ConversaAberta && Pontos.FocoConversa(out Vector3 f))
+            {
+                foco = f;
+                tem = true;
+            }
+
+            if (tem)
+            {
+                _followCamera.Enquadrar(foco);
+            }
+            else if (_followCamera.Enquadrando)
+            {
+                _followCamera.Soltar();
+            }
+        }
+
         public RouteGuide Route => _route;
 
         public GameTuning Tuning => _tuning;
@@ -178,7 +222,7 @@ namespace Entregador.Game
             InitFiscalizacao();
             InitRetirada();
             InitMenu();
-            PontosDirector.Criar(this);
+            Pontos = PontosDirector.Criar(this);
 
             if (ShowSetupOnStart)
             {
@@ -439,6 +483,7 @@ namespace Entregador.Game
         {
             TickFiscalizacao();
             TickRelogio();
+            TickEnquadramento();
             TickRetirada();
 
             if (State == FlowState.Offer)

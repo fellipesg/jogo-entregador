@@ -49,7 +49,7 @@ Controles (celular primeiro; o teclado é conveniência de desktop):
 | Pausa | mesmo botão | Esc |
 | Informações (cortina) | deslizar do topo para baixo | Tab |
 
-Fluxo do turno: celular, Começar turno (a pílula "Começar turno" ao lado do ícone do celular também abre) → tela do dia → **online, procurando pedidos** (anda livre, sem rota; o app chama depois de uma espera) → oferta de pedido (notificação do app, 15 s) → ir ao restaurante com o **cartão de navegação** → parar no balcão (menos de 3 km/h) → conversa com a atendente (esperas reais, a fala muda no meio) → levar ao cliente → parar no endereço e "Entregar pedido [E]" → conversa na porta → aviso de ganho e volta a procurar pedidos → ... → resumo do turno → exploração livre. Ninguém empurra o jogador para o turno: depois de Novo jogo, da folga pelo celular e do relatório do turno ou da semana ele cai na exploração livre, sem painel. O botão "Pular corrida" faz a entrega automática. O pneu pode furar na metade da corrida.
+Fluxo do turno: celular, Começar turno (a pílula "Começar turno" ao lado do ícone do celular também abre) → tela do dia → **online, procurando pedidos** (anda livre, sem rota; o app chama depois de uma espera) → oferta de pedido (notificação do app, 15 s) → ir ao restaurante com o **cartão de navegação** → parar no balcão (menos de 3 km/h) → conversa com a atendente (esperas reais, a fala muda no meio) → levar ao cliente → parar no endereço e "Entregar pedido [E]" → conversa na porta → aviso de ganho e volta a procurar pedidos → ... → resumo do turno → exploração livre. Ninguém empurra o jogador para o turno: depois de Novo jogo, da folga pelo celular e do relatório do turno ou da semana ele cai na exploração livre, sem painel. O botão de debug "Pular corrida" (entrega automática) só aparece com `JOGO_DEBUG=1` ou `GameFlow.DebugPularCorrida = true`. O pneu pode furar na metade da corrida.
 
 ### Ritmo dos pedidos, relógio e entrega na porta
 
@@ -58,6 +58,19 @@ Fluxo do turno: celular, Começar turno (a pílula "Começar turno" ao lado do �
 - **Ofertas no meio da corrida**: cartão compacto não modal (12 s, Aceitar/Recusar, Y/N ou Enter/Backspace). Aceita, vira o "Próximo pedido" (no máximo um; aparece na cortina de informações) e, ao entregar o atual, a rota vai direto ao próximo restaurante. 70% das ofertas chegam depois de 60% do caminho. Há também o **pedido duplo** (mesmo restaurante, retirados juntos). Recusar ou deixar vencer pesa na taxa de aceite. Eventos públicos do `GameFlow`: `OfertaApareceu`, `OfertaAceita`, `OfferRefused` (o `AudioDirector` toca os jingles).
 - **Turno**: acaba quando o app ofereceu os pedidos dele (`AppConfig.OrdersPerShift`, 3, ou 2 com aceite baixo) e tudo foi entregue, OU quando o orçamento de tempo (`EconomyConfig.ShiftMinutes`, 240 min de jogo) esgota; a entrega em andamento ainda termina. "Encerrar turno" está no celular (M) online e sem pedido; com pedido ativo o app pede para terminá-lo primeiro.
 - **Entrega na porta** (`Entrega`, Core): cliente desce (2 a 5 min), porteiro (1 a 2 min), cliente demora (3 a 8 min), interfone quebrado, pede para subir (4 a 8 min; recusar abre uma discussão de 1 a 2 min com desfechos), cliente esqueceu o código (1 a 3 min). As esperas rodam de verdade, com barra e a fala mudando no meio; "Tirar foto da entrega" liga na foto do `IncidentSystem`. Gorjeta (máx. `AppConfig.MaxTip`) e estrelas dependem das escolhas e da pontualidade.
+
+- **Compressão do relógio**: tudo que tem duração em minutos de jogo (esperas do balcão e da porta, fila, conversa dos entregadores, turno de 240 min) corre a 1 min = 8 s reais (`RelogioJogo.SegundosPorMinuto`; `GameFlow.SegundosPorMinuto` pode ser baixado nos testes). O relógio anda na rua, online, em corrida, no balcão, na porta e na roda de conversa; menus e painéis o congelam. Um turno de 4 h dura cerca de 32 min reais.
+
+### Pontos de entregadores (roda de conversa)
+
+Nos restaurantes mais movimentados (`PontosDirector`, criado pelo `GameFlow` em runtime) ficam motos e entregadores (`Game/Pontos/`, regras em `Core/ConversaEntregadores` e `PontoPopulacao`). A quantidade depende da hora do dia (`PontosDirector.HoraDoDia` é ligado a `GameFlow.Relogio.Hora`) e da chuva. Parado perto de um ponto, aparece "Trocar ideia [E]" (some se há diálogo de balcão ou da porta, ou o botão "Entregar pedido"); a conversa mistura papo e dicas verdadeiras do jogo (blitz, radares, chuva) e pode marcar um "?" no minimapa. Os minutos gastos na conversa (`Conversa.MinutosGastos`) avançam o relógio do jogo em qualquer estado e, em corrida, também atrasam a entrega (`AddDelaySeconds`), como as esperas do balcão.
+
+O que eles contam é verdade contra os sistemas (`Core/MovimentoDoDia`): a **zona movimentada** é uma das zonas quentes do dia da `OfertaAgenda` (escolha determinística por dia, a mesma do minimapa online), e o **restaurante lento** é o que tem, naquele dia, mais "tá saindo" e fila no balcão (`GameFlow.ConfigDoBalcao`, pesos da `Retirada` ajustados) com espera em torno dos minutos que eles dizem.
+
+### Câmera, marcadores e debug
+
+- Nos diálogos (porta, balcão, roda de conversa) a `FollowCamera.Enquadrar` testa ângulos em volta da moto com sphere-cast e escolhe uma posição sem parede que enxerga o foco; fora dos diálogos a câmera de seguir também nunca entra em parede.
+- O destino atual ganha um anel tracejado fino e pulsante (raio de 3 m, na cor do app) e um pino flutuante sobre a porta (`AlvoMarcador`); os antigos discos no chão não existem mais.
 
 Constantes de distância e tempo (km por metro, velocidade de referência, segundos por minuto de jogo, tempo da oferta) ficam no componente `GameTuning`, no objeto `GameRoot` da cena.
 

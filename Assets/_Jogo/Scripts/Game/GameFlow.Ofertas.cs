@@ -181,11 +181,9 @@ namespace Entregador.Game
             _agendaTotal = _agendaRestante = (float)OfertaAgenda.SortearEspera(_ofertaRandom, Contexto(false), OfertaConfig);
         }
 
-        /// <summary>Sorteia de 1 a 3 zonas quentes em volta dos restaurantes.</summary>
-        private void RollZonas()
+        /// <summary>As zonas quentes do dia: escolha determinística por dia (os entregadores falam dela e é a mesma do minimapa).</summary>
+        public List<ZonaQuente> ZonasDoDia()
         {
-            _zonas.Clear();
-            _zonaAtual = null;
             var candidates = new List<ZonaQuente>();
 
             foreach (Place restaurant in _map.Restaurants)
@@ -193,13 +191,57 @@ namespace Entregador.Game
                 candidates.Add(new ZonaQuente(restaurant.Name, restaurant.Position.x, restaurant.Position.z, ZonaRaio));
             }
 
-            if (candidates.Count == 0)
+            return candidates.Count == 0 ? candidates : MovimentoDoDia.ZonasDoDia(Session.Day, candidates);
+        }
+
+        /// <summary>Nomes dos restaurantes do mapa.</summary>
+        public List<string> NomesDosRestaurantes()
+        {
+            var names = new List<string>();
+
+            foreach (Place restaurant in _map.Restaurants)
             {
-                return;
+                names.Add(restaurant.Name);
             }
 
-            _zonas.AddRange(ZonasQuentes.Sortear(_ofertaRandom, candidates, 1, 3));
+            return names;
+        }
 
+        /// <summary>Nomes dos restaurantes das zonas quentes do dia.</summary>
+        private HashSet<string> NomesDasZonasDoDia()
+        {
+            var names = new HashSet<string>();
+
+            foreach (ZonaQuente zona in ZonasDoDia())
+            {
+                names.Add(zona.Nome);
+            }
+
+            return names;
+        }
+
+        /// <summary>O restaurante lento do dia (nome) e os minutos de espera típicos dele; null se não houver.</summary>
+        public string RestauranteLentoDoDia(out int minutos)
+        {
+            List<string> names = NomesDosRestaurantes();
+            int index = MovimentoDoDia.IndiceLento(Session.Day, names, NomesDasZonasDoDia());
+            minutos = index >= 0 ? MovimentoDoDia.MinutosDeEspera(Session.Day, names[index]) : 0;
+
+            return index >= 0 ? names[index] : null;
+        }
+
+        /// <summary>Pesos e esperas do balcão do restaurante hoje (o lento do dia tem mais "tá saindo" e fila).</summary>
+        public RetiradaConfig ConfigDoBalcao(string restaurante)
+        {
+            return MovimentoDoDia.ConfigDoBalcao(Session.Day, restaurante, NomesDosRestaurantes(), NomesDasZonasDoDia());
+        }
+
+        /// <summary>Zonas quentes do dia (de 1 a 3 restaurantes).</summary>
+        private void RollZonas()
+        {
+            _zonas.Clear();
+            _zonaAtual = null;
+            _zonas.AddRange(ZonasDoDia());
         }
 
         private void TickOnline()

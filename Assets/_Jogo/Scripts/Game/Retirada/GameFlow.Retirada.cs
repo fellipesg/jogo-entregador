@@ -62,7 +62,7 @@ namespace Entregador.Game
         /// <summary>Um pedido aceito: nasce a retirada, com o código que o app mostra.</summary>
         private void BeginRetirada()
         {
-            _retirada = new Retirada(CurrentOrder, CurrentPlan.Restaurant.Name, _random);
+            _retirada = new Retirada(CurrentOrder, CurrentPlan.Restaurant.Name, _random, ConfigDoBalcao(CurrentPlan.Restaurant.Name));
             _pickupPenalty = 0;
             _pickupMinutes = 0;
             _waitElapsed = 0f;

@@ -56,6 +56,14 @@ namespace Entregador.Game
 
         public bool ConversaAberta => _conversa != null;
 
+        /// <summary>Centro do ponto onde a conversa acontece (foco da câmera).</summary>
+        public bool FocoConversa(out Vector3 foco)
+        {
+            foco = _pontoAtual != null ? _pontoAtual.Centro : default;
+
+            return _pontoAtual != null;
+        }
+
         /// <summary>Minutos de jogo gastos na última conversa encerrada (testes).</summary>
         public int UltimosMinutos { get; private set; }
 
@@ -68,8 +76,14 @@ namespace Entregador.Game
             go.transform.SetParent(flow.transform, false);
             var diretor = go.AddComponent<PontosDirector>();
             diretor._flow = flow;
+            HoraDoDia = () => flow != null && flow.Relogio != null ? (float)flow.Relogio.Hora : -1f;
 
             return diretor;
+        }
+
+        private void OnDestroy()
+        {
+            HoraDoDia = null;
         }
 
         private void Start()
@@ -406,7 +420,12 @@ namespace Entregador.Game
         {
             if (HoraDoDia != null)
             {
-                return HoraDoDia();
+                float hora = HoraDoDia();
+
+                if (hora >= 0f)
+                {
+                    return hora;
+                }
             }
 
             if (_look != null)
@@ -427,7 +446,12 @@ namespace Entregador.Game
                 return false;
             }
 
-            if (_flow.Balcao != null && _flow.Balcao.DialogueVisible)
+            if (_flow.InDeliveryZone || _flow.State == FlowState.AtDoor)
+            {
+                return false;
+            }
+
+            if (_flow.Balcao != null && (_flow.Balcao.DialogueVisible || _flow.Balcao.PromptVisible))
             {
                 return false;
             }
@@ -576,9 +600,15 @@ namespace Entregador.Game
 
             UltimosMinutos = _conversa.MinutosGastos;
 
-            if (_flow.IsDriving && _flow.Tracker != null && _flow.Tuning != null)
+            // O tempo da conversa passa no relógio do jogo em qualquer estado; em corrida também atrasa a entrega (como as esperas do balcão).
+            if (_flow.Relogio != null)
             {
-                _flow.Tracker.AddDelaySeconds(UltimosMinutos * _flow.Tuning.SecondsPerGameMinute);
+                _flow.Relogio.AvancarMinutos(UltimosMinutos);
+            }
+
+            if (_flow.IsDriving && _flow.Tracker != null)
+            {
+                _flow.Tracker.AddDelaySeconds(UltimosMinutos * _flow.SegundosPorMinuto);
             }
 
             if (_trackerPausado && _flow.IsDriving)
@@ -676,19 +706,20 @@ namespace Entregador.Game
             c.ChoveAmanha = sessao.IsRainyDay(sessao.Day + 1);
             c.ChovendoAgora = _look != null && _look.Current == LookKind.Rain;
 
-            Place[] restaurantes = _flow.Map.Restaurants;
+            // Verdade contra os sistemas: zona movimentada = zona quente do dia da agenda; restaurante lento = o do balcão.
+            List<ZonaQuente> zonas = _flow.ZonasDoDia();
 
-            if (restaurantes.Length > 0)
+            if (zonas.Count > 0)
             {
-                int ocupado = (sessao.Day * 7 + 3) % restaurantes.Length;
-                int lento = (ocupado + 1 + sessao.Day % Math.Max(1, restaurantes.Length - 1)) % restaurantes.Length;
-                c.ZonaMovimentada = "lá na região de " + restaurantes[ocupado].Name;
+                c.ZonaMovimentada = "lá na região de " + zonas[sessao.Day % zonas.Count].Nome;
+            }
 
-                if (lento != ocupado)
-                {
-                    c.RestauranteLento = restaurantes[lento].Name;
-                    c.MinutosDeEspera = 10 + (sessao.Day * 5 + lento * 3) % 11;
-                }
+            string lento = _flow.RestauranteLentoDoDia(out int minutos);
+
+            if (lento != null)
+            {
+                c.RestauranteLento = lento;
+                c.MinutosDeEspera = minutos;
             }
 
             return c;

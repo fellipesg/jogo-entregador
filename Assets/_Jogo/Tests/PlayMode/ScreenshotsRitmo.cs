@@ -111,7 +111,7 @@ namespace Entregador.Game.Tests
 
             SaveAll(Dir, "r6_espera_subindo.png", main);
 
-            float until = Time.realtimeSinceStartup + 40f;
+            float until = Time.realtimeSinceStartup + 120f;
 
             while (Flow.State == FlowState.AtDoor && Time.realtimeSinceStartup < until)
             {

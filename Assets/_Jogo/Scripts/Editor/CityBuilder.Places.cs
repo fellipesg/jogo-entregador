@@ -48,12 +48,12 @@ namespace Entregador.Editor
 
         // ---------- Marcadores ----------
 
-        /// <summary>Marcador no chão (disco) com um feixe de luz alto, que só acende quando é o alvo.</summary>
+        /// <summary>Marcador com um feixe de luz alto, que só acende quando é o alvo.</summary>
         private static GameObject BuildMarker(Transform parent, string name, Vector3 position, Material padMaterial, Materials m)
         {
             Transform holder = Group(parent, "Marcador_" + name);
             holder.position = position;
-            CityPieces.Cylinder(holder, "Disco", position + Vector3.up * 0.06f, 3.5f, 0.08f, padMaterial);
+            // Sem disco no chão: o AlvoMarcador (runtime) desenha um anel fino só no alvo atual.
             GameObject beam = CityPieces.Cylinder(holder, "Feixe", position + Vector3.up * 15f, 0.7f, 30f, m.Beam);
             beam.SetActive(false);
 

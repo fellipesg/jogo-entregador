@@ -135,7 +135,9 @@ namespace Entregador.Game.Tests
             yield return null;
 
             Assert.IsTrue(Flow.Ui.ProcurandoVisivel, "A pílula Procurando pedidos aparece.");
-            StringAssert.Contains("Procurando", Flow.Ui.ProcurandoTexto);
+
+            // As zonas quentes do dia são determinísticas e o spawn pode cair numa: o texto vira "Zona quente" (coberto em outro teste).
+            StringAssert.Contains(Flow.NaZonaQuente ? "Zona" : "Procurando", Flow.Ui.ProcurandoTexto);
             Assert.IsFalse(Flow.Bike.Locked, "Online o jogador anda livre.");
             Assert.IsFalse(Flow.Route.HasTarget, "Sem rota.");
             Assert.IsFalse(Flow.Ui.ModalVisible, "Sem oferta imediata.");
