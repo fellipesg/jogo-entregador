@@ -115,11 +115,11 @@ namespace Entregador.Core.Tests
             {
                 Retirada retirada = Nova(new SeededRandom(seed));
                 retirada.Iniciar(BalcaoSituacao.SaindoJaJa);
-                Assert.That(retirada.EsperaMinutos, Is.InRange(1, 8));
+                Assert.That(retirada.EsperaMinutos, Is.InRange(3, 15), "Cozinha de verdade: 3 a 15 min de jogo.");
 
                 Retirada fila = Nova(new SeededRandom(seed));
                 fila.Iniciar(BalcaoSituacao.Lotado);
-                Assert.That(fila.EsperaMinutos, Is.InRange(2, 5));
+                Assert.That(fila.EsperaMinutos, Is.InRange(2, 10), "Fila: 2 a 10 min de jogo.");
                 StringAssert.Contains("lotado", fila.Fala);
             }
         }
@@ -174,7 +174,7 @@ namespace Entregador.Core.Tests
         }
 
         [Test]
-        public void PedidoTrocado_ConferirCustaUmMinutoEEvitaAReclamacao()
+        public void PedidoTrocado_ConferirCustaDoisMinutosEEvitaAReclamacao()
         {
             for (int seed = 0; seed < 50; seed++)
             {
@@ -185,7 +185,7 @@ namespace Entregador.Core.Tests
                 retirada.Escolher(BalcaoAcao.Conferir);
 
                 Assert.IsTrue(retirada.Conferiu);
-                Assert.AreEqual(1, retirada.MinutosPerdidos);
+                Assert.AreEqual(2, retirada.MinutosPerdidos);
                 StringAssert.Contains(retirada.ItemFaltando, retirada.Fala);
                 retirada.Escolher(BalcaoAcao.PegarPedido);
                 Assert.IsTrue(retirada.Concluida);

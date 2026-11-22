@@ -77,13 +77,10 @@ namespace Entregador.Game.Tests
             yield return PickUpOrder(Flow);
             Assert.AreEqual(FlowState.DrivingToCustomer, Flow.State);
 
-            TeleportNear(Flow, Flow.CurrentPlan.Customer);
-            yield return new WaitForSeconds(0.3f);
-            Assert.AreEqual(FlowState.AtDoor, Flow.State);
+            yield return ArriveAtCustomer(Flow);
             Flow.TakePhoto();
             Flow.Deliver();
-            Assert.AreEqual(FlowState.Result, Flow.State);
-            Assert.IsTrue(Flow.Ui.ClickModalButton("Continuar"));
+            Assert.AreEqual(FlowState.Offer, Flow.State, "Entrega comum: aviso de ganho e o app oferece o próximo.");
 
             // Recusa o resto do dia: fim do turno e volta à exploração livre.
             int guard = 0;

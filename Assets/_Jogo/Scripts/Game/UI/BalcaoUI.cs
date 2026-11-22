@@ -42,6 +42,7 @@ namespace Entregador.Game
         private TMP_Text _nameText;
         private TMP_Text _speechText;
         private TMP_Text _codeText;
+        private TMP_Text _subtitleText;
         private Image _avatar;
         private TMP_Text _avatarLetter;
         private GameObject _barRoot;
@@ -62,6 +63,8 @@ namespace Entregador.Game
         public bool DialogueVisible => _dialogRoot != null && _dialogRoot.activeSelf;
 
         public string RestaurantName => _nameText != null ? _nameText.text : string.Empty;
+
+        public string Subtitle => _subtitleText != null ? _subtitleText.text : string.Empty;
 
         public string Speech => _speechText != null ? _speechText.text : string.Empty;
 
@@ -155,8 +158,8 @@ namespace Entregador.Game
             // Cabeçalho: nome do restaurante e a função de quem atende.
             _nameText = UiKit.Text(panel, "Restaurante", string.Empty, UiTema.TamSubtitulo, UiTema.Texto, FontStyles.Bold);
             Sized(_nameText.gameObject, 30f);
-            TMP_Text subtitle = UiKit.Caps(panel, "Subtitulo", "Atendente do balcão", UiTema.TextoSuave);
-            Sized(subtitle.gameObject, 18f);
+            _subtitleText = UiKit.Caps(panel, "Subtitulo", "Atendente do balcão", UiTema.TextoSuave);
+            Sized(_subtitleText.gameObject, 18f);
 
             // Conversa: avatar pequeno e balão de fala.
             RectTransform row = UiKit.Rect("Conversa", panel);
@@ -276,8 +279,10 @@ namespace Entregador.Game
 
         // ---------- Diálogo ----------
 
-        public void ShowDialogue(string restaurante, string fala, IReadOnlyList<string> opcoes, Action<int> onChoose)
+        /// <summary>Abre o diálogo. O subtítulo diz quem fala (atendente no balcão; cliente ou porteiro na entrega).</summary>
+        public void ShowDialogue(string restaurante, string fala, IReadOnlyList<string> opcoes, Action<int> onChoose, string subtitulo = "Atendente do balcão")
         {
+            _subtitleText.text = subtitulo;
             HidePrompt();
             HideHint();
             _dialogRoot.SetActive(true);
@@ -333,6 +338,12 @@ namespace Entregador.Game
             {
                 button.gameObject.SetActive(false);
             }
+        }
+
+/// <summary>Troca quem fala (porteiro, cliente) sem fechar o diálogo.</summary>
+        public void SetSubtitle(string subtitulo)
+        {
+            _subtitleText.text = subtitulo;
         }
 
         public void SetCodeHint(string text)

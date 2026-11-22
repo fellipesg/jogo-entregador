@@ -86,20 +86,18 @@ namespace Entregador.Game.Tests
 
             yield return PickUpOrder(Flow);
 
-            TeleportNear(Flow, customer);
-            yield return new WaitForSeconds(0.2f);
-            Assert.AreEqual(FlowState.AtDoor, Flow.State);
+            yield return ArriveAtCustomer(Flow);
 
             Flow.TakePhoto();
             Assert.IsTrue(Flow.Tracker.PhotoTaken);
             Flow.Deliver();
 
-            Assert.AreEqual(FlowState.Result, Flow.State);
+            Assert.AreEqual(FlowState.Offer, Flow.State, "Entrega comum: sem painel de resultado, só o aviso de ganho, e o app já oferece o próximo.");
+            StringAssert.Contains("Pedido entregue", Flow.Ui.ToastMessage);
             Assert.IsNotNull(Flow.LastResult, "Deveria existir um DeliveryResult.");
             Assert.Greater(Flow.LastResult.Pay.Cents, 0);
             Assert.AreNotEqual(before, Flow.Session.Wallet.Balance);
             Assert.AreEqual(1, Flow.Session.App.DeliveriesThisWeek);
-            StringAssert.Contains("Pagamento", Flow.Ui.ModalBody);
         }
 
         [UnityTest]
@@ -136,7 +134,8 @@ namespace Entregador.Game.Tests
             Assert.AreEqual("No vermelho.", Flow.Ui.ModalTitle);
             StringAssert.Contains("Saldo final", Flow.Ui.ModalBody);
             Assert.IsTrue(Flow.Ui.ClickModalButton("Tentar de novo"));
-            Assert.AreEqual(FlowState.DayStart, Flow.State);
+            Assert.AreEqual(FlowState.FreeRoam, Flow.State, "A nova semana começa na exploração livre, sem painel do dia empurrando o turno.");
+            Assert.IsFalse(Flow.Ui.ModalVisible);
             Assert.AreEqual(1, Flow.Session.Day);
             yield return null;
         }
@@ -189,7 +188,7 @@ namespace Entregador.Game.Tests
             yield return new WaitForSecondsRealtime(2.6f);
 
             Assert.AreEqual(FlowState.DrivingToRestaurant, Flow.State);
-            Assert.GreaterOrEqual(Flow.Tracker.ElapsedSeconds, 5f * Flow.Tuning.SecondsPerGameMinute - 0.01f);
+            Assert.GreaterOrEqual(Flow.Tracker.ElapsedSeconds, 5f * Flow.SegundosPorMinuto - 0.01f);
             Assert.IsTrue(Flow.Tracker.Running);
         }
 
@@ -560,9 +559,7 @@ namespace Entregador.Game.Tests
             Assert.IsTrue(Flow.Ui.ClickModalButton("Começar turno"));
             Assert.IsTrue(Flow.Ui.ClickModalButton("Aceitar"));
             yield return PickUpOrder(Flow);
-            TeleportNear(Flow, Flow.CurrentPlan.Customer);
-            yield return new WaitForSeconds(0.2f);
-            Assert.AreEqual(FlowState.AtDoor, Flow.State);
+            yield return ArriveAtCustomer(Flow);
 
             if (photo)
             {

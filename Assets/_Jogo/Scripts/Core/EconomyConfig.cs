@@ -25,6 +25,12 @@ namespace Entregador.Core
         /// <summary>Tempo previsto de corrida por km, usado quando o jogador pula a corrida.</summary>
         public double MinutesPerKm = 4;
 
+        /// <summary>
+        /// Orçamento de tempo do turno em minutos de jogo (4 h = uns 32 min reais, ver RelogioJogo). O turno acaba quando o app já ofereceu os
+        /// pedidos dele (AppConfig.OrdersPerShift) e tudo foi entregue, OU quando este tempo se esgota (o pedido em andamento ainda termina).
+        /// </summary>
+        public int ShiftMinutes = 240;
+
         public double GoodWeekMinRating = 4.7;
     }
 }

@@ -19,8 +19,8 @@ namespace Entregador.Game
         [Tooltip("Multiplicador do tempo previsto. 1 = distância / velocidade de referência.")]
         public float ExpectedTimeFactor = 1f;
 
-        [Tooltip("Quantos segundos reais valem 1 minuto de jogo (atrasos dos imprevistos).")]
-        public float SecondsPerGameMinute = 5f;
+        [Tooltip("Obsoleto: o relógio do jogo é RelogioJogo (Core), 1 min de jogo = 8 s reais. Mantido só para não quebrar a cena gerada.")]
+        public float SecondsPerGameMinute = 8f;
 
         [Tooltip("Tempo para aceitar um pedido.")]
         public float OfferSeconds = 15f;

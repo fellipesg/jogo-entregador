@@ -117,6 +117,7 @@ namespace Entregador.Game
             TickToast(dt);
             TickDayTitle();
             TickOffer(time);
+            TickOfertasUi(time);
             TickScreens(dt);
         }
 

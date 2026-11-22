@@ -77,5 +77,35 @@ namespace Entregador.Game
                 PickupMeters = pick.pickup,
             };
         }
+
+        /// <summary>
+        /// Pedido duplo: o segundo pedido sai do MESMO restaurante. Escolhe o cliente (diferente dos que já estão na rota) cuja rota a partir
+        /// do restaurante mais se aproxima da distância do pedido. Não há trecho até o restaurante (PickupMeters = 0): os dois são retirados juntos.
+        /// </summary>
+        public static RunPlan PlanSameRestaurant(CityMap map, GameTuning tuning, Order order, Place restaurant, IGameRandom random, params Place[] avoidCustomers)
+        {
+            RoadGraph graph = map.Graph;
+            float targetMeters = (float)order.DistanceKm / tuning.WorldToGameKm;
+            var options = new List<(Place customer, float meters, float error)>();
+            float minError = float.MaxValue;
+
+            foreach (Place customer in map.Customers)
+            {
+                if (System.Array.IndexOf(avoidCustomers, customer) >= 0)
+                {
+                    continue;
+                }
+
+                float meters = graph.RouteLength(restaurant.Position, customer.Position);
+                float error = Mathf.Abs(meters - targetMeters);
+                options.Add((customer, meters, error));
+                minError = Mathf.Min(minError, error);
+            }
+
+            var near = options.FindAll(o => o.error <= Mathf.Max(minError + 40f, 80f));
+            var pick = near[random.Range(0, near.Count)];
+
+            return new RunPlan { Restaurant = restaurant, Customer = pick.customer, DeliveryMeters = pick.meters, PickupMeters = 0f };
+        }
     }
 }
