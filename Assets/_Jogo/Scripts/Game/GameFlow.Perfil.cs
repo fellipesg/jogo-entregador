@@ -75,7 +75,7 @@ namespace Entregador.Game
             buttons.Add(new PanelButton("Tenho CNH: " + (_perfil.TemCnh ? "sim" : "não") + "  >", ToggleCnh));
             buttons.Add(new PanelButton("Começar", StartFromSetup));
 
-            _ui.ShowModal("Novo jogo", body.ToString().TrimEnd(), buttons.ToArray());
+            _ui.ShowSetup(BuildSetupData(), buttons.ToArray());
         }
 
         /// <summary>Define o perfil por código (testes e futuras telas) e atualiza a moto na cena.</summary>
@@ -118,6 +118,7 @@ namespace Entregador.Game
             }
 
             NewWeek(_seed);
+            EnterFreeRoamFromSetup();
         }
 
         /// <summary>Aplica o perfil à moto da cena: física do modelo, visual do modelo, da cor e do personagem.</summary>

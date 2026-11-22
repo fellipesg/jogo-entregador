@@ -365,6 +365,16 @@ namespace Entregador.Core.Tests
         // ---------- fuga ----------
 
         [Test]
+        public void FlagrantePenaltiesApplyEvenWithoutAShift()
+        {
+            var session = new GameSession(new FakeRandom(), null, null, NoRain, new PerfilInicial { Origem = MotoOrigem.Alugada, TemCnh = true });
+            Abordagem abordagem = session.ReportarFlagrante(Infracao.Contramao);
+            AbordagemOutcome outcome = session.ResolverAbordagem(abordagem, AbordagemChoice.Parar);
+            Assert.IsNotNull(outcome);
+            Assert.IsFalse(session.IsShiftActive);
+        }
+
+        [Test]
         public void Fuga_Escapou_NadaAcontece_AlugadaPodeReceberAvisoDepois()
         {
             // blitz, km, escapa, placa anotada, chegada (0,0 -> 2 dias)

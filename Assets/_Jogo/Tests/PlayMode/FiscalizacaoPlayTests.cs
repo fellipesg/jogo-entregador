@@ -671,6 +671,8 @@ namespace Entregador.Game.Tests
             StringAssert.Contains("aluguel mais caro", string.Join("|", Flow.Ui.ModalButtonLabels));
             Assert.IsTrue(Flow.Ui.ClickModalButton("Começar"));
 
+            Assert.AreEqual(FlowState.FreeRoam, Flow.State, "Depois do novo jogo o jogador explora livremente.");
+            Flow.StartShiftFromMenu();
             Assert.AreEqual(FlowState.DayStart, Flow.State);
             Assert.AreEqual(MotoOrigem.Alugada, Flow.Session.Origem);
             Assert.IsTrue(Flow.Session.Cnh.TemCnh);
@@ -685,6 +687,7 @@ namespace Entregador.Game.Tests
             Assert.IsTrue(Flow.Ui.ClickModalButton("Moto:"));
             Assert.IsTrue(Flow.Ui.ClickModalButton("Tenho CNH"));
             Assert.IsTrue(Flow.Ui.ClickModalButton("Começar"));
+            Flow.StartShiftFromMenu();
             Assert.AreEqual(MotoOrigem.Bob, Flow.Session.Origem);
             Assert.IsFalse(Flow.Session.Cnh.TemCnh);
             Assert.IsNull(Flow.Session.Rental);

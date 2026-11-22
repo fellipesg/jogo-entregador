@@ -166,7 +166,7 @@ namespace Entregador.Game
 
         private void OnFlagrante(Infracao infracao, PoliceUnit unit)
         {
-            if (!IsDriving || _abordagem != null || Session == null)
+            if (!IsRoaming || _abordagem != null || Session == null)
             {
                 return;
             }
@@ -206,7 +206,7 @@ namespace Entregador.Game
         {
             if (_monitor != null)
             {
-                _monitor.Active = IsDriving;
+                _monitor.Active = IsRoaming;
             }
 
             if (State == FlowState.Abordagem)

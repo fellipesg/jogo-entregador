@@ -39,6 +39,18 @@ namespace Entregador.Game
 
         /// <summary>A moto foi levada ao pátio ou apreendida: o dia acaba.</summary>
         MotoRetida,
+
+        /// <summary>Tela inicial (título sobre a câmera que gira).</summary>
+        MainMenu,
+
+        /// <summary>Exploração livre: anda pela cidade sem pedidos nem relógio.</summary>
+        FreeRoam,
+
+        /// <summary>Menu do celular aberto na exploração livre.</summary>
+        FreeRoamMenu,
+
+        /// <summary>Pausa durante o turno.</summary>
+        Paused,
     }
 
     /// <summary>
@@ -156,11 +168,12 @@ namespace Entregador.Game
             _ui.Build(_input, _minimap != null ? _minimap.Texture : null, SkipRun);
             InitFiscalizacao();
             InitRetirada();
+            InitMenu();
 
             if (ShowSetupOnStart)
             {
                 ApplyProfile();
-                ShowSetup();
+                ShowMainMenu();
             }
             else
             {
@@ -174,6 +187,7 @@ namespace Entregador.Game
         public void NewWeek(int seed = 0, IGameRandom random = null)
         {
             _random = random ?? new SeededRandom(seed != 0 ? seed : Environment.TickCount);
+            _fromFreeRoam = false;
             Session = new GameSession(_random, EconomyForProfile(), null, null, _perfil.ParaRegras());
             ApplyProfile();
             _tracker.ClearRadar();
@@ -243,6 +257,7 @@ namespace Entregador.Game
                 AddNoMotoOptions(body, buttons);
             }
 
+            AddFreeRoamBack(buttons);
             _ui.ShowModal($"Dia {Session.Day}: {DayName(Session.Day)}", body.ToString().TrimEnd(), buttons.ToArray());
         }
 
@@ -316,9 +331,8 @@ namespace Entregador.Game
 
         private void ShowOffer()
         {
-            _ui.ShowModal(
-                "Novo pedido",
-                OfferBody(),
+            _ui.ShowOffer(CurrentPlan.Restaurant.Name, CurrentPlan.Customer.Name, Km(CurrentOrder.DistanceKm), CurrentOrder.Pay.ToString(),
+                CurrentOrder.IsRaining, _offerRemaining, _tuning.OfferSeconds, OfferBody(),
                 new PanelButton("Aceitar", AcceptOffer),
                 new PanelButton("Recusar", RejectOffer));
         }
@@ -419,6 +433,8 @@ namespace Entregador.Game
                 _lastShownOfferSecond = second;
                 _ui.SetModalBody(OfferBody());
             }
+
+            _ui.SetOfferTimer(_offerRemaining, _tuning.OfferSeconds);
         }
 
         private void TickDriving()
@@ -742,7 +758,7 @@ namespace Entregador.Game
             }
 
             Session.EndDay();
-            ShowDayStart();
+            AfterShiftEnded();
         }
 
         private void ShowWeekReport()
