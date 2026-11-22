@@ -64,6 +64,7 @@ namespace Entregador.Game
         private static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
         private static readonly int EmissionColor = Shader.PropertyToID("_EmissionColor");
 
+        private float _velocidadeExterna;
         private float _anguloRodaFrente;
         private float _anguloRodaTras;
         private float _esterce;
@@ -73,6 +74,18 @@ namespace Entregador.Game
         private MaterialPropertyBlock _bloco;
 
         public MotoModelo Modelo => _modelo;
+
+        /// <summary>Catálogo dos modelos dos personagens (as motos paradas dos pontos de entregadores o reaproveitam).</summary>
+        public PersonagensCatalogo Catalogo => _catalogo;
+
+        /// <summary>Material-base da paleta (molde para outras motos só visuais).</summary>
+        public Material MatPaleta => _matPaleta;
+
+        /// <summary>Moto sem física (NPC): velocidade que gira as rodas, em m/s. Ignorada se houver ArcadeBikeController.</summary>
+        public void DefinirVelocidadeExterna(float velocidade) => _velocidadeExterna = velocidade;
+
+        /// <summary>Ângulo (graus) em que a moto parada tomba no pezinho de apoio.</summary>
+        public void DefinirTombamento(float graus) => _tombamentoParada = graus;
         public MotoCor Cor => _cor;
         public Personagem Personagem => _personagem;
         public int Triangulos => _triangulos;
@@ -360,7 +373,7 @@ namespace Entregador.Game
         /// <summary>Atualiza o visual (também chamado com dt = 0 logo depois de montar, e por testes).</summary>
         public void Posicionar(float dt)
         {
-            float speed = _moto != null ? _moto.ForwardSpeed : 0f;
+            float speed = _moto != null ? _moto.ForwardSpeed : _velocidadeExterna;
             float topSpeed = _moto != null ? _moto.TopSpeed : 13f;
             float steer = _moto != null ? _moto.SteerInput : 0f;
             float brake = _moto != null ? _moto.BrakeInput : 0f;

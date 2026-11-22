@@ -172,6 +172,7 @@ namespace Entregador.Game
             InitFiscalizacao();
             InitRetirada();
             InitMenu();
+            PontosDirector.Criar(this);
 
             if (ShowSetupOnStart)
             {
