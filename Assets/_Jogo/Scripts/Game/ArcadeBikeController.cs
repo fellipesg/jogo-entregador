@@ -6,7 +6,8 @@ namespace Entregador.Game
     /// <summary>
     /// Moto arcade sobre um Rigidbody. A física fica sempre em pé (só gira no eixo Y); a inclinação é só visual.
     /// Moto de verdade: motor com câmbio automático de 5 marchas, giro, freio-motor, arrasto e freio combinado (ver MotoFisica), sem teto
-    /// artificial de velocidade; a direção fica mais firme em alta velocidade.
+    /// artificial de velocidade. A direção comanda a inclinação (ver Pilotagem): ela demora mais para subir em alta velocidade, a guinada sai
+    /// dela pela curva coordenada, a aderência limita a curva (chuva e freio tiram atrito) e abaixo de ~15 km/h o guidão gira direto.
     /// Avisa por eventos quando a comida leva um tranco (batida, freada forte, buraco) e quando a moto se danifica.
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
@@ -18,14 +19,17 @@ namespace Entregador.Game
         [SerializeField] private float _reverseTopSpeed = 4f;
         [SerializeField] private float _lockedBrakeFactor = 1.25f;
 
-        [Header("Direção")]
-        [SerializeField] private float _steerResponseLow = 12f;
-        [SerializeField] private float _steerResponseHigh = 4f;
+        [Header("Direção (o resto está no perfil de cada moto, MotoFisica)")]
+        [SerializeField] private float _rampaEntradaLenta = 8f;
+        [SerializeField] private float _rampaEntradaRapida = 3.5f;
+        [SerializeField] private float _tempoRetornoFator = 0.6f;
 
         [Header("Aderência")]
-        [SerializeField] private float _gripDry = 9f;
-        [SerializeField] private float _gripWet = 3.2f;
-        [SerializeField] private float _wetSteerFactor = 0.85f;
+        [SerializeField] private float _aderenciaLateralSeca = 12f;
+        [SerializeField] private float _aderenciaLateralMolhada = 4.5f;
+        [SerializeField] private float _aderenciaMolhado = 0.6f;
+        [SerializeField] private float _freioMolhado = 0.75f;
+        [SerializeField] private float _atritoDerrapando = 0.8f;
 
         [Header("Impactos")]
         [SerializeField] private float _impactMinSpeed = 3f;
@@ -39,7 +43,6 @@ namespace Entregador.Game
 
         [Header("Visual")]
         [SerializeField] private Transform _leanRoot;
-        [SerializeField] private float _maxLeanDegrees = 26f;
 
         private Rigidbody _body;
         private BikeInput _input;
@@ -51,6 +54,9 @@ namespace Entregador.Game
         private bool _revving;
         private float _launchTimer;
         private float _lean;
+        private float _leanTaxa;
+        private float _freioSuave;
+        private float _derrapagem;
         private float _lastImpactTime = -10f;
         private float _lastBumpTime = -10f;
 
@@ -101,12 +107,21 @@ namespace Entregador.Game
 
         public float RpmLimit => _perfil.RpmLimite;
 
+        /// <summary>A frente escapou (a curva passou do atrito): pneu cantando. O áudio usa isto.</summary>
+        public bool Derrapando => _derrapagem > 0.3f;
+
+        /// <summary>Quanto a moto está escapando de frente (0 a 1), para o volume do pneu cantando.</summary>
+        public float Derrapagem => _derrapagem;
+
+        /// <summary>Aceleração lateral atual da curva (m/s²), vinda da inclinação.</summary>
+        public float AceleracaoLateralAtual => Pilotagem.AceleracaoLateral(_lean);
+
         public MotoModelo Modelo => _modelo;
 
         public MotoFisicaPerfil Perfil => _perfil;
 
-        /// <summary>Inclinação visual atual em graus (sinal do eixo Z; positivo = para a esquerda).</summary>
-        public float Lean => _lean;
+        /// <summary>Inclinação física atual em graus (sinal do eixo Z; positivo = para a esquerda). A guinada sai dela.</summary>
+        public float Lean => -_lean;
 
         /// <summary>Velocidade no plano em m/s.</summary>
         public float Speed => new Vector3(_body.linearVelocity.x, 0f, _body.linearVelocity.z).magnitude;
@@ -165,6 +180,10 @@ namespace Entregador.Game
             _body.angularVelocity = Vector3.zero;
             ForwardSpeed = 0f;
             _steer = 0f;
+            _lean = 0f;
+            _leanTaxa = 0f;
+            _derrapagem = 0f;
+            _freioSuave = 0f;
             Teleported?.Invoke();
         }
 
@@ -181,22 +200,56 @@ namespace Entregador.Game
             float turnSpeed = Vector3.Dot(velocity, Quaternion.Euler(0f, _yaw, 0f) * Vector3.forward);
             float absTurn = Mathf.Abs(turnSpeed);
 
-            // Direção com resposta mais lenta em alta velocidade (estável), e giro limitado pela aceleração lateral:
-            // em baixa velocidade gira rápido; a 100 km/h só faz curvas abertas.
-            float speedRatio01 = Mathf.Clamp01(absTurn / 30f);
-            float response = Mathf.Lerp(_steerResponseLow, _steerResponseHigh, speedRatio01);
-            _steer = Mathf.MoveTowards(_steer, steerInput, response * dt);
-            float yawRate = Mathf.Min(_perfil.GiroBaixa, _perfil.AceleracaoLateral * Mathf.Rad2Deg / Mathf.Max(absTurn, 1f));
+            // Entrada de direção: rampa (nunca de 0 a 1 de uma vez; mais lenta em alta velocidade) e curva mais fina perto do centro em alta.
+            bool voltando = Mathf.Abs(steerInput) < Mathf.Abs(_steer) || steerInput * _steer < 0f;
+            float rampa = Pilotagem.TaxaRampaEntrada(absTurn, voltando, _rampaEntradaLenta, _rampaEntradaRapida);
+            _steer = Mathf.MoveTowards(_steer, steerInput, rampa * dt);
+            float comando = Pilotagem.FormarEntrada(_steer, absTurn, _perfil.ExpoenteDirecaoRapida);
 
-            if (IsWet)
+            // Aderência: o freio usa parte do atrito do pneu (círculo de atrito), a chuva reduz o atrito todo.
+            float aderencia = IsWet ? _aderenciaMolhado : 1f;
+            float freioAlvo = brake > 0.05f && turnSpeed > 0.4f ? brake : 0f;
+            _freioSuave = Mathf.MoveTowards(_freioSuave, freioAlvo, 6f * dt);
+            float freioUsado = _freioSuave * _perfil.Freio * (IsWet ? _freioMolhado : 1f);
+            float incMax = Pilotagem.InclinacaoMaxima(_perfil.InclinacaoMaxima, _perfil.AceleracaoLateral, aderencia, freioUsado);
+            float aLatMax = Pilotagem.AceleracaoLateralDisponivel(_perfil.AceleracaoLateral, aderencia, freioUsado);
+
+            // Inclinação: o comando pede um ângulo (até o fundo de curso, limitado pela aderência); ela sobe com tempo que cresce com a
+            // velocidade e volta ao centro mais rápido (a moto se levanta sozinha). Amortecimento crítico: sem oscilar.
+            float pesoInclinacao = Pilotagem.PesoInclinacao(absTurn);
+            float fundo = Mathf.Min(incMax, _perfil.InclinacaoMaxima * Pilotagem.FatorInclinacaoRapida(absTurn) * 0.97f);
+            float parada = Mathf.Clamp01(absTurn / 2.5f);
+            float visual = Mathf.Lerp(0.3f, 1f, pesoInclinacao);
+            float alvoInclinacao = comando * fundo * visual * parada;
+            float tempo = Pilotagem.TempoInclinacao(absTurn, _perfil.TempoInclinacaoLento, _perfil.TempoInclinacaoRapido);
+
+            // O retorno rápido só vale quando o piloto alivia a direção; o freio que tira inclinação disponível a levanta devagar (a frente escapa).
+            float fundoLivre = Mathf.Min(Pilotagem.InclinacaoMaxima(_perfil.InclinacaoMaxima, _perfil.AceleracaoLateral, aderencia, 0f), _perfil.InclinacaoMaxima * Pilotagem.FatorInclinacaoRapida(absTurn) * 0.97f);
+            float alvoLivre = comando * fundoLivre * visual * parada;
+
+            if (Mathf.Abs(alvoLivre) < Mathf.Abs(_lean) - 0.5f || alvoLivre * _lean < 0f)
             {
-                yawRate *= _wetSteerFactor;
+                tempo *= _tempoRetornoFator;
             }
+
+            // _lean guarda o sinal da direção (direita positiva); Lean (visual) inverte para o eixo Z.
+            float inclinacao = _lean;
+            Pilotagem.PassoCritico(ref inclinacao, ref _leanTaxa, alvoInclinacao, tempo, dt);
+            _lean = inclinacao;
+
+            // Derrapagem: se a inclinação passa da que o atrito ainda dá (freada forte inclinado, chão molhado), a frente escapa:
+            // a moto vira menos que o pedido e a velocidade demora a seguir o rumo (linha alargada).
+            float alvoDerrapagem = Pilotagem.AlvoDerrapagem(_lean, incMax) * Mathf.Clamp01((absTurn - 4f) / 4f);
+            _derrapagem = Mathf.MoveTowards(_derrapagem, alvoDerrapagem, (alvoDerrapagem > _derrapagem ? 5f : 1.2f) * dt);
+
+            // Guinada: mistura do guidão direto (baixa velocidade) com a curva coordenada g·tan(inclinação)/v.
+            float yawGuidao = Pilotagem.TaxaGuinadaGuidao(comando, absTurn, _perfil.RaioMinimo, _perfil.GiroBaixa, aLatMax);
+            float yawInclinado = Pilotagem.TaxaGuinada(_lean, absTurn);
+            float yawRate = Mathf.Lerp(yawGuidao, yawInclinado, pesoInclinacao) * (1f - 0.5f * _derrapagem);
 
             // Primeiro gira (com a velocidade da física anterior), depois decompõe a velocidade no novo eixo:
             // com pouca aderência a parte lateral demora a sumir e a moto escorrega.
-            float lowSpeedFade = Mathf.Clamp01(absTurn / 3f);
-            _yaw += _steer * yawRate * lowSpeedFade * (turnSpeed < 0f ? -1f : 1f) * dt;
+            _yaw += yawRate * (turnSpeed < 0f ? -1f : 1f) * dt;
 
             Vector3 forward = Quaternion.Euler(0f, _yaw, 0f) * Vector3.forward;
             Vector3 right = Quaternion.Euler(0f, _yaw, 0f) * Vector3.right;
@@ -204,7 +257,7 @@ namespace Entregador.Game
             float forwardSpeed = Vector3.Dot(velocity, forward);
             float lateralSpeed = Vector3.Dot(velocity, right);
             float previousForward = forwardSpeed;
-            float wetGrip = IsWet ? 0.75f : 1f;
+            float wetGrip = IsWet ? _freioMolhado : 1f;
 
             // Cortando giro: parado (menos de ~3 km/h), freio e acelerador juntos = embreagem puxada.
             // TODO: a perturbação do sossego (polícia por perto) poderia punir o giro cortado em excesso.
@@ -299,8 +352,13 @@ namespace Entregador.Game
                 FoodShock?.Invoke(_hardCornerFoodPerSecond * (forwardSpeed / 15f) * dt);
             }
 
-            float grip = (IsWet ? _gripWet : _gripDry);
+            float grip = (IsWet ? _aderenciaLateralMolhada : _aderenciaLateralSeca) * (1f - _atritoDerrapando * _derrapagem);
             lateralSpeed *= Mathf.Exp(-grip * dt);
+
+            if (_derrapagem > 0f && forwardSpeed > 0f)
+            {
+                forwardSpeed = Mathf.Max(0f, forwardSpeed - 2.5f * _derrapagem * dt);
+            }
 
             Vector3 planar = forward * forwardSpeed + right * lateralSpeed;
             _body.linearVelocity = new Vector3(planar.x, velocity.y, planar.z);
@@ -308,13 +366,9 @@ namespace Entregador.Game
 
             ForwardSpeed = forwardSpeed;
 
-            float leanSpeed = Mathf.Clamp01(Mathf.Abs(forwardSpeed) / 13f);
-            float targetLean = -_steer * leanSpeed * _maxLeanDegrees;
-            _lean = Mathf.Lerp(_lean, targetLean, 1f - Mathf.Exp(-8f * dt));
-
             if (_leanRoot != null)
             {
-                _leanRoot.localRotation = Quaternion.Euler(0f, 0f, _lean);
+                _leanRoot.localRotation = Quaternion.Euler(0f, 0f, -_lean);
             }
         }
 

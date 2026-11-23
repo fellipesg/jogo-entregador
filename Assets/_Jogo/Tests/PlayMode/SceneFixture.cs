@@ -15,6 +15,8 @@ namespace Entregador.Game.Tests
         [UnitySetUp]
         public IEnumerator LoadScene()
         {
+            // Testes em silêncio (idempotente); JOGO_TESTE_SOM=1 liga o som para ouvir.
+            AudioListener.volume = System.Environment.GetEnvironmentVariable("JOGO_TESTE_SOM") == "1" ? 1f : 0f;
             SceneManager.LoadScene("SantoAmaro");
             yield return null;
             yield return null;

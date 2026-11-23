@@ -59,7 +59,11 @@ namespace Entregador.Game
         [Header("Animação")]
         [SerializeField] private float _esterceMaximo = 24f;
         [SerializeField] private float _tombamentoParada = 5f;
-        [SerializeField] private float _inclinacaoExtraDoPiloto = 0.35f;
+
+        /// <summary>O piloto se deita um pouco mais que a moto (fração da inclinação), com a cabeça tentando ficar nivelada.</summary>
+        private const float InclinacaoExtraDoPiloto = 0.2f;
+
+        private const float NivelDaCabeca = 0.3f;
 
         private static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
         private static readonly int EmissionColor = Shader.PropertyToID("_EmissionColor");
@@ -397,8 +401,9 @@ namespace Entregador.Game
             float stopEase = _parado * _parado * (3f - 2f * _parado);
             _raizModelo.localRotation = Quaternion.Euler(0f, 0f, _tombamentoParada * stopEase);
 
-            // O piloto inclina um pouco mais que a moto.
-            _piloto.localRotation = Quaternion.Euler(0f, 0f, lean * _inclinacaoExtraDoPiloto);
+            // O piloto inclina um pouco mais que a moto (a inclinação da moto já é a da física); a cabeça volta parte disso, para o olhar ficar nivelado.
+            _piloto.localRotation = Quaternion.Euler(0f, 0f, lean * InclinacaoExtraDoPiloto);
+            float cabecaRoll = -lean * (1f + InclinacaoExtraDoPiloto) * NivelDaCabeca;
 
             // Luzes: farol sempre aceso, lanterna mais forte ao frear.
             float headOn = 1f;
@@ -419,7 +424,8 @@ namespace Entregador.Game
                 root.TransformPoint(_pedaleiraEsq),
                 root.TransformPoint(_pedaleiraDir),
                 groundL,
-                stopEase);
+                stopEase,
+                cabecaRoll);
         }
 
         private void AtualizarLuz(Renderer renderer, ref float cache, float on, Color baseOff, Color emissionOn, Color baseOn, Color? emissionOff = null)

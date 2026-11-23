@@ -13,12 +13,19 @@ namespace Entregador.Game
         [SerializeField] private float _headingSharpness = 3f;
         [SerializeField] private float _baseFov = 62f;
         [SerializeField] private float _speedFov = 12f;
+        [SerializeField] private float _fovExtraRapido = 4f;
+        [SerializeField] private float _tempoGiroLento = 0.14f;
+        [SerializeField] private float _tempoGiroRapido = 0.34f;
+        [SerializeField] private float _fracaoRolagem = 0.25f;
+        [SerializeField] private float _maxRolagem = 12f;
 
         private const float RaioColisao = 0.4f;
         private static readonly RaycastHit[] Hits = new RaycastHit[16];
         private static readonly Collider[] Colliders = new Collider[24];
 
         private float _heading;
+        private float _headingVel;
+        private float _rolagem;
         private Camera _camera;
         private bool _enquadrando;
         private Vector3 _foco;
@@ -198,6 +205,8 @@ namespace Entregador.Game
 
             _enquadrando = false;
             _heading = _target.Yaw;
+            _headingVel = 0f;
+            _rolagem = 0f;
             transform.position = DesiredPosition();
             transform.rotation = DesiredRotation();
         }
@@ -238,19 +247,26 @@ namespace Entregador.Game
                 return;
             }
 
-            _heading = Mathf.LerpAngle(_heading, _target.Yaw, 1f - Mathf.Exp(-_headingSharpness * dt));
-
             // Em alta velocidade a câmera segue mais colada (senão a moto fugiria do quadro) e olha mais longe.
             float ratio = Mathf.Clamp01(_target.Speed / _target.TopSpeed);
+
+            // O rumo da câmera segue o da moto com amortecimento crítico: um atraso suave (maior em alta velocidade), sem arranco nem repique.
+            float tempoGiro = Mathf.Lerp(_tempoGiroLento, _tempoGiroRapido, ratio);
+            _heading = Mathf.SmoothDampAngle(_heading, _target.Yaw, ref _headingVel, tempoGiro, Mathf.Infinity, dt);
+
+            // Rolagem sutil: a câmera deita uma fração da inclinação da moto (e volta suave).
+            float alvoRolagem = Mathf.Clamp(_target.Lean * _fracaoRolagem, -_maxRolagem, _maxRolagem);
+            _rolagem = Mathf.Lerp(_rolagem, alvoRolagem, 1f - Mathf.Exp(-4f * dt));
             float sharpness = Mathf.Lerp(_positionSharpness, _positionSharpness * 2.2f, ratio);
             Vector3 livre = PuxarParaForaDeParedes(Pivo(), DesiredPosition());
             transform.position = Vector3.Lerp(transform.position, livre, 1f - Mathf.Exp(-sharpness * dt));
-            transform.rotation = Quaternion.LookRotation(DesiredLookPoint() - transform.position, Vector3.up);
+            transform.rotation = Quaternion.LookRotation(DesiredLookPoint() - transform.position, Vector3.up) * Quaternion.Euler(0f, 0f, _rolagem);
 
             if (_camera != null)
             {
-                float speedRatio = ratio;
-                _camera.fieldOfView = Mathf.Lerp(_camera.fieldOfView, _baseFov + _speedFov * speedRatio, 1f - Mathf.Exp(-3f * dt));
+                // Campo de visão abre com a velocidade (sensação de velocidade), um pouco mais que linear nos últimos km/h.
+                float alvoFov = _baseFov + _speedFov * ratio + _fovExtraRapido * ratio * ratio;
+                _camera.fieldOfView = Mathf.Lerp(_camera.fieldOfView, alvoFov, 1f - Mathf.Exp(-3f * dt));
             }
         }
 

@@ -160,7 +160,7 @@ namespace Entregador.Game
         /// Monta a pose: inclinação do tronco (graus, para frente), manoplas e pedaleiras em coordenadas de mundo, e o pé esquerdo no
         /// chão (stop = 1 baixa o pé esquerdo até groundLeft, o ponto no chão onde fica a bola do pé).
         /// </summary>
-        public void Posicionar(Quaternion motoRot, float pitch, float headPitch, Vector3 gripL, Vector3 gripR, Vector3 pegL, Vector3 pegR, Vector3 groundL, float stop)
+        public void Posicionar(Quaternion motoRot, float pitch, float headPitch, Vector3 gripL, Vector3 gripR, Vector3 pegL, Vector3 pegR, Vector3 groundL, float stop, float cabecaRoll = 0f)
         {
             if (!Valido)
             {
@@ -182,6 +182,11 @@ namespace Entregador.Game
             Girar(Osso.Spine2, pitch * 0.33f, right);
             Girar(Osso.Neck, -pitch * 0.35f + headPitch * 0.5f, right);
             Girar(Osso.Head, -pitch * 0.45f + headPitch * 0.5f, right);
+
+            // Em curva a cabeça (e um pouco do pescoço) desfaz parte da inclinação em volta do eixo da moto: o olhar fica nivelado.
+            Vector3 frente = motoRot * Vector3.forward;
+            Girar(Osso.Neck, cabecaRoll * 0.4f, frente);
+            Girar(Osso.Head, cabecaRoll * 0.6f, frente);
 
             // Braços.
             for (int side = 0; side < 2; side++)

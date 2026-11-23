@@ -40,6 +40,21 @@ namespace Entregador.Game
         /// <summary>Giro máximo (graus por segundo) em baixa velocidade (manobra de pátio).</summary>
         public float GiroBaixa = 120f;
 
+        /// <summary>Inclinação máxima da moto em curva (graus), antes do limite de aderência.</summary>
+        public float InclinacaoMaxima = 45f;
+
+        /// <summary>Tempo de inclinação (s) a 20 km/h: a moto se deita rápido em baixa velocidade.</summary>
+        public float TempoInclinacaoLento = 0.15f;
+
+        /// <summary>Tempo de inclinação (s) a 110 km/h: efeito giroscópico, a moto custa a deitar (e a curva só aparece aos poucos).</summary>
+        public float TempoInclinacaoRapido = 0.45f;
+
+        /// <summary>Raio mínimo (m) do guidão direto, em baixa velocidade (retorno e manobra).</summary>
+        public float RaioMinimo = 2.2f;
+
+        /// <summary>Expoente da curva de direção em alta velocidade (1 = linear; maior = mais fino perto do centro).</summary>
+        public float ExpoenteDirecaoRapida = 1.5f;
+
         public int Marchas => MarchaVmax.Length;
 
         public float VelocidadeFinal => VelocidadeFinalKmh / 3.6f;
@@ -73,6 +88,10 @@ namespace Entregador.Game
             RpmLimite = 10000f,
             Freio = 9.6f,
             AceleracaoLateral = 10.5f,
+            InclinacaoMaxima = 48f,
+            TempoInclinacaoLento = 0.13f,
+            TempoInclinacaoRapido = 0.42f,
+            RaioMinimo = 2.4f,
         });
 
         public static MotoFisicaPerfil Para(MotoModelo modelo) => modelo == MotoModelo.Twister ? Twister : Titan;
