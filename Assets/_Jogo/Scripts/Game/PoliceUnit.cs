@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -54,6 +55,27 @@ namespace Entregador.Game
         private ArcadeBikeController _watchedBike;
         private float _watchedAt = -10f;
         private bool _braking;
+        private bool _halted;
+        private float _unseenFor;
+        private float _sightTimer;
+
+        /// <summary>A viatura que não vai alcançar a moto desiste se ela fica a mais que isto (m).</summary>
+        public const float GiveUpMeters = 250f;
+
+        /// <summary>...ou se perde a moto de vista por mais que isto (s).</summary>
+        public const float GiveUpUnseenSeconds = 20f;
+
+        /// <summary>Alcance (m) em que a viatura ainda "vê" a moto para não desistir (com linha de visão livre).</summary>
+        public const float ChaseSightMeters = 120f;
+
+        /// <summary>Depois de uma abordagem a mesma viatura não autua o jogador de novo por este tempo (s).</summary>
+        public const float RefiscalizarSegundos = 60f;
+
+        /// <summary>A viatura desistiu da perseguição sozinha (moto longe ou fora de vista).</summary>
+        public static event Action<PoliceUnit> Desistiu;
+
+        /// <summary>Até quando (Time.time) esta viatura não dá flagrante no jogador.</summary>
+        public float NoFlagUntil { get; private set; }
 
         /// <summary>Distância (m) que a viatura mantém atrás da moto numa abordagem (centro a centro).</summary>
         public const float StandoffMeters = 7f;
@@ -131,6 +153,7 @@ namespace Entregador.Game
             gameObject.SetActive(true);
             _target = null;
             _bike = null;
+            _halted = false;
             TeleportTo(_homePosition, _homeRotation);
             _mode = PoliceMode.Parada;
             _braking = false;
@@ -144,6 +167,7 @@ namespace Entregador.Game
             gameObject.SetActive(true);
             _target = null;
             _bike = null;
+            _halted = false;
             _mode = _waypoints.Length >= 2 ? PoliceMode.Patrulha : PoliceMode.Parada;
             SetLights(false);
         }
@@ -153,10 +177,15 @@ namespace Entregador.Game
         {
             gameObject.SetActive(true);
 
-            if (_mode != PoliceMode.Perseguicao)
+            // Uma viatura que já tinha encostado atrás da moto (HaltBehind) e volta a perseguir (Fugir) mantém o modo de antes da 1ª perseguição.
+            if (_mode != PoliceMode.Perseguicao && !_halted)
             {
                 _modeBeforeChase = _mode;
             }
+
+            _halted = false;
+            _unseenFor = 0f;
+            _sightTimer = 0f;
 
             _bike = bike;
             _target = bike.transform;
@@ -176,6 +205,8 @@ namespace Entregador.Game
         /// <summary>Acaba o serviço: a viatura de ronda volta a rondar; a da blitz some.</summary>
         public void Dismiss()
         {
+            NoFlagUntil = Time.time + RefiscalizarSegundos;
+            _halted = false;
             _target = null;
             _bike = null;
             _braking = false;
@@ -197,6 +228,7 @@ namespace Entregador.Game
         /// <summary>A viatura alcançou a moto e para junto dela (apresentação do "pego").</summary>
         public void HaltBehind()
         {
+            _halted = true;
             _mode = PoliceMode.Parada;
             _braking = true;
         }
@@ -382,6 +414,14 @@ namespace Entregador.Game
             Vector3 position = _body.position;
             Vector3 toBike = Flat(_target.position - position);
             float gap = toBike.magnitude;
+
+            if (!_willCatch && ShouldGiveUp(gap, dt))
+            {
+                GiveUp();
+
+                return;
+            }
+
             float playerSpeed = _bike != null ? _bike.Speed : 0f;
 
             // Rota pelas ruas até a moto (refeita a cada 0,4 s); sem grafo, vai em linha reta.
@@ -445,6 +485,33 @@ namespace Entregador.Game
             }
 
             Drive(Flat(aim - position), wanted, 160f, 18f, dt);
+        }
+
+        /// <summary>Quem não vai alcançar a moto desiste quando ela está longe demais ou some de vista por tempo demais.</summary>
+        private bool ShouldGiveUp(float gap, float dt)
+        {
+            if (gap > GiveUpMeters)
+            {
+                return true;
+            }
+
+            _sightTimer -= dt;
+
+            if (_sightTimer <= 0f)
+            {
+                _sightTimer = 0.5f;
+                bool sees = CanSee(_target.position, ChaseSightMeters);
+                _unseenFor = sees ? 0f : _unseenFor + 0.5f;
+            }
+
+            return _unseenFor > GiveUpUnseenSeconds;
+        }
+
+        /// <summary>Desiste da perseguição: volta à ronda (ou sai de cena, se era de blitz), sirene calada.</summary>
+        public void GiveUp()
+        {
+            Dismiss();
+            Desistiu?.Invoke(this);
         }
 
         private void Drive(Vector3 toAim, float wantedSpeed, float turnRate, float acceleration, float dt)

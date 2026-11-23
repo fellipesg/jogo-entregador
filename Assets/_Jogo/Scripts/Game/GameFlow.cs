@@ -204,11 +204,14 @@ namespace Entregador.Game
         private void OnEnable()
         {
             BlitzSite.BikeEntered += OnBlitzEntered;
+            PoliceUnit.Desistiu -= OnPoliceGaveUp;
+            PoliceUnit.Desistiu += OnPoliceGaveUp;
         }
 
         private void OnDisable()
         {
             BlitzSite.BikeEntered -= OnBlitzEntered;
+            PoliceUnit.Desistiu -= OnPoliceGaveUp;
 
             if (_monitor != null)
             {

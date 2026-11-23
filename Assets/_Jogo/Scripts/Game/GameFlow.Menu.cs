@@ -535,6 +535,7 @@ namespace Entregador.Game
 
             FeedNavegacao();
             FeedSinal();
+            FeedPolicia();
 
             if (Session != null)
             {

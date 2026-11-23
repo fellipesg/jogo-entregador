@@ -55,6 +55,8 @@ namespace Entregador.Game
         private RectTransform _chipContramao;
         private RectTransform _chipCorredor;
         private RectTransform _chipSinal;
+        private RectTransform _chipPolicia;
+        private bool _policia;
         private TextMeshProUGUI _chipSinalTexto;
         private RectTransform _chipCamera;
         private bool _sinalVermelho;
@@ -404,7 +406,18 @@ namespace Entregador.Game
             Image lens = UiKit.Circle(_chipCamera, "Lente", new Color(0.055f, 0.067f, 0.086f, 1f));
             UiKit.Place(lens.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, -1f), new Vector2(10f, 10f));
             _chipCamera.gameObject.SetActive(false);
+
+            // Viatura atrás da moto (perseguição ativa): chip vermelho que pulsa, para a sirene nunca vir "do nada".
+            _chipPolicia = BuildChip("AvisoPolicia", "Polícia na cola", UiTema.Perigo, 74f);
         }
+
+        /// <summary>Uma viatura persegue a moto agora (liga o chip vermelho que pulsa).</summary>
+        public void SetPolicia(bool perseguindo)
+        {
+            _policia = perseguindo;
+        }
+
+        public bool PoliciaVisivel => _chipPolicia != null && _chipPolicia.gameObject.activeSelf;
 
         /// <summary>Sinal vermelho à frente (até 60 m): mostra o chip com a distância e, se o cruzamento tem fotossensor, a câmera.</summary>
         public void SetSinal(bool vermelho, float metros, bool fotossensor)
@@ -564,6 +577,23 @@ namespace Entregador.Game
             if (_chipCamera.gameObject.activeSelf != _sinalCamera)
             {
                 _chipCamera.gameObject.SetActive(_sinalCamera);
+            }
+
+            if (_chipPolicia.gameObject.activeSelf != _policia)
+            {
+                _chipPolicia.gameObject.SetActive(_policia);
+            }
+
+            if (_policia)
+            {
+                float pulse = 0.5f + 0.5f * Mathf.Sin(time * 10f);
+                _chipPolicia.localScale = Vector3.one * (1f + 0.07f * pulse);
+                Image fundo = _chipPolicia.GetComponent<Image>();
+
+                if (fundo != null)
+                {
+                    fundo.color = Color.Lerp(new Color(0.055f, 0.067f, 0.086f, 0.9f), new Color(0.55f, 0.06f, 0.08f, 0.95f), pulse);
+                }
             }
 
             if (_sinalVermelho)

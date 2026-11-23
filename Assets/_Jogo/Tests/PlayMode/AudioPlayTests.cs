@@ -1,4 +1,5 @@
 using System.Collections;
+using Entregador.Core;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UI;
@@ -127,7 +128,10 @@ namespace Entregador.Game.Tests
             Assert.IsNotNull(siren, "A viatura ganha sirene.");
             Assert.IsFalse(siren.Tocando, "Em ronda, sem sirene.");
 
-            patrol.StartChase(Flow.Bike, false);
+            // Uma flagrante de verdade (a perseguição sempre nasce do fluxo), com a moto a 80 m da viatura.
+            Flow.EnterFreeRoam();
+            Flow.Bike.Teleport(patrol.transform.position + new Vector3(80f, 0.1f, 0f), 0f);
+            Flow.ForceFlagrante(Infracao.Contramao, patrol);
             yield return WaitFor(() => siren.Tocando, 3f);
             Assert.IsTrue(siren.Tocando, "A sirene toca na perseguição.");
             Assert.IsTrue(siren.Perseguicao);
