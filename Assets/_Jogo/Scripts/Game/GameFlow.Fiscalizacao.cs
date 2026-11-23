@@ -31,6 +31,8 @@ namespace Entregador.Game
         private float _chaseTimer;
         private bool _chaseWillCatch;
 
+        private readonly List<PoliceUnit> _unitsScratch = new List<PoliceUnit>();
+
         public TransitoMonitor Monitor => _monitor;
 
         public Abordagem AbordagemAtual => _abordagem;
@@ -72,6 +74,8 @@ namespace Entregador.Game
             _monitor.Configure(_bike, _map, _tuning);
             _monitor.FlagranteVisto -= OnFlagrante;
             _monitor.FlagranteVisto += OnFlagrante;
+            PoliceUnit.Desistiu -= OnPoliceGaveUp;
+            PoliceUnit.Desistiu += OnPoliceGaveUp;
 
             _blitzSites = FindObjectsByType<BlitzSite>(FindObjectsInactive.Include);
             System.Array.Sort(_blitzSites, (a, b) => string.CompareOrdinal(a.name, b.name));
@@ -199,7 +203,7 @@ namespace Entregador.Game
                 unit.StartChase(_bike, true);
             }
 
-            _ui.Toast(abordagem.Motivo == AbordagemMotivo.Blitz ? "Blitz! Os policiais mandam você parar." : "Sirene atrás de você! A polícia mandou parar.", 3f);
+            _ui.Toast(abordagem.Motivo == AbordagemMotivo.Blitz ? "Blitz! Os policiais mandam você parar." : "Viatura te seguindo — encoste a moto", 3f);
         }
 
         private void TickFiscalizacao()
@@ -208,6 +212,8 @@ namespace Entregador.Game
             {
                 _monitor.Active = IsRoaming;
             }
+
+            ClearOrphanChases();
 
             if (State == FlowState.Abordagem)
             {
@@ -227,6 +233,64 @@ namespace Entregador.Game
             {
                 TickChase();
             }
+        }
+
+        /// <summary>
+        /// Toda perseguição acaba: uma viatura com sirene só existe enquanto o fluxo está numa abordagem ou fuga dela. Qualquer outra em
+        /// perseguição (o fluxo mudou de estado, o dia virou, outro código a acionou) é dispensada na hora.
+        /// </summary>
+        private void ClearOrphanChases()
+        {
+            bool handling = State == FlowState.Abordagem || State == FlowState.Perseguicao || State == FlowState.AbordagemResultado
+                            || State == FlowState.MotoRetida;
+            _unitsScratch.Clear();
+
+            foreach (PoliceUnit unit in PoliceUnit.Active)
+            {
+                if (unit != null && unit.Mode == PoliceMode.Perseguicao && !(handling && unit == _abordagemUnit))
+                {
+                    _unitsScratch.Add(unit);
+                }
+            }
+
+            foreach (PoliceUnit unit in _unitsScratch)
+            {
+                unit.Dismiss();
+
+                if (unit == _abordagemUnit)
+                {
+                    _abordagemUnit = null;
+                }
+            }
+
+            _unitsScratch.Clear();
+        }
+
+        /// <summary>A viatura desistiu (moto longe ou fora de vista): na fuga, é o "despistou" de sempre, com as consequências já decididas.</summary>
+        private void OnPoliceGaveUp(PoliceUnit unit)
+        {
+            if (unit == _abordagemUnit && State == FlowState.Perseguicao && !_chaseWillCatch)
+            {
+                EndChase(false);
+            }
+        }
+
+        /// <summary>Chip vermelho pulsando no HUD enquanto alguma viatura persegue a moto (a sirene nunca vem "do nada").</summary>
+        private void FeedPolicia()
+        {
+            bool chasing = false;
+
+            foreach (PoliceUnit unit in PoliceUnit.Active)
+            {
+                if (unit != null && unit.Mode == PoliceMode.Perseguicao)
+                {
+                    chasing = true;
+
+                    break;
+                }
+            }
+
+            _ui.SetPolicia(chasing);
         }
 
         private void ShowAbordagemPanel()
@@ -352,14 +416,20 @@ namespace Entregador.Game
 
             // Escapou: segue a corrida. Se a moto é alugada e a placa foi anotada, a multa chega depois (Core), sem aviso.
             State = _stateBeforeAbordagem;
-            _monitor.Cooldown(30f);
+            _monitor.Cooldown(TransitoMonitor.FlagranteCooldownSeconds);
             LastOutcome = _pendingOutcome;
             _multasVistas = Session.MultasPagas.Count;
-            _ui.Toast("Você despistou a polícia.", 3f);
+            _ui.Toast("Você despistou a viatura", 3f);
         }
 
         private void ShowAbordagemResult(AbordagemOutcome outcome)
         {
+            // A viatura encosta e cala a sirene enquanto o resultado está na tela.
+            if (_abordagemUnit != null && _abordagemUnit.Mode == PoliceMode.Perseguicao)
+            {
+                _abordagemUnit.HaltBehind();
+            }
+
             LastOutcome = outcome;
             _pendingOutcome = outcome;
             _multasVistas = Session.MultasPagas.Count;
@@ -432,7 +502,7 @@ namespace Entregador.Game
                 _abordagemUnit = null;
             }
 
-            _monitor.Cooldown(45f);
+            _monitor.Cooldown(TransitoMonitor.FlagranteCooldownSeconds);
             State = _stateBeforeAbordagem;
             _ui.HideModal();
             _tracker.Resume();

@@ -477,6 +477,14 @@ namespace Entregador.Game
             _painelView.SetSinal(vermelho, metros, fotossensor);
         }
 
+        /// <summary>Uma viatura persegue a moto: chip vermelho pulsando no painel.</summary>
+        public void SetPolicia(bool perseguindo)
+        {
+            _painelView.SetPolicia(perseguindo);
+        }
+
+        public bool PoliciaVisivel => _painelView != null && _painelView.PoliciaVisivel;
+
         public bool SinalVisivel => _painelView.SinalVisivel;
 
         public bool CameraSinalVisivel => _painelView.CameraVisivel;

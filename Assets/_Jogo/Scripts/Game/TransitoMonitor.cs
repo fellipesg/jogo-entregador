@@ -18,6 +18,9 @@ namespace Entregador.Game
         private const float SampleInterval = 0.1f;
         private const float CommitSeconds = 1.0f;
 
+        /// <summary>Depois de um flagrante (ou de uma abordagem) a polícia espera este tempo (s) antes de autuar de novo.</summary>
+        public const float FlagranteCooldownSeconds = 60f;
+
         [SerializeField] private ArcadeBikeController _bike;
         [SerializeField] private CityMap _map;
         [SerializeField] private GameTuning _tuning;
@@ -134,7 +137,7 @@ namespace Entregador.Game
 
                 if (watcher != null)
                 {
-                    Cooldown(45f);
+                    Cooldown(FlagranteCooldownSeconds);
                     FlagranteVisto?.Invoke(CurrentInfraction.Value, watcher);
                 }
             }
@@ -158,7 +161,7 @@ namespace Entregador.Game
                 return false;
             }
 
-            Cooldown(45f);
+            Cooldown(FlagranteCooldownSeconds);
             FlagranteVisto?.Invoke(infracao, watcher);
 
             return true;
@@ -193,7 +196,7 @@ namespace Entregador.Game
 
             foreach (PoliceUnit unit in PoliceUnit.Active)
             {
-                if (unit.Mode == PoliceMode.Patrulha && unit.CanSee(position, range))
+                if (unit.Mode == PoliceMode.Patrulha && Time.time >= unit.NoFlagUntil && unit.CanSee(position, range))
                 {
                     return unit;
                 }

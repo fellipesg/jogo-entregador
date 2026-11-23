@@ -12,9 +12,16 @@ namespace Entregador.Game.Tests
     {
         protected GameFlow Flow;
 
+        /// <summary>Os testes rodam mudos (o áudio é checado pelo estado das fontes, não pelo alto-falante). JOGO_TESTE_SOM=1 liga o som.</summary>
+        public static void Silenciar()
+        {
+            AudioListener.volume = System.Environment.GetEnvironmentVariable("JOGO_TESTE_SOM") == "1" ? 1f : 0f;
+        }
+
         [UnitySetUp]
         public IEnumerator LoadScene()
         {
+            Silenciar();
             SceneManager.LoadScene("SantoAmaro");
             yield return null;
             yield return null;

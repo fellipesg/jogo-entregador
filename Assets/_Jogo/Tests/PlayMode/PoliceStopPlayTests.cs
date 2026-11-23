@@ -49,7 +49,7 @@ namespace Entregador.Game.Tests
             // A viatura vem de 70 m atrás, em linha com a rua.
             Vector3 start = bikeAt - heading * 70f;
             PlaceUnit(unit, new Vector3(start.x, 0.02f, start.z), street.Yaw);
-            unit.StartChase(Flow.Bike, true);
+            Flow.ForceFlagrante(Infracao.Contramao, unit);
 
             float minGap = float.MaxValue;
             float maxDisplacement = 0f;
