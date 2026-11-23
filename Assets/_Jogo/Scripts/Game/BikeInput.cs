@@ -6,14 +6,19 @@ namespace Entregador.Game
     /// <summary>
     /// Junta as entradas da moto em três valores: direção (-1 a 1), acelerador (0 a 1) e freio (0 a 1).
     /// Fontes: teclado (W/S/A/D, setas, espaço), controle (analógico esquerdo e gatilhos), zonas de toque invisíveis
-    /// (TouchZone: metade esquerda dirige, metade direita acelera/freia), inclinação do celular (opcional) e entrada virtual (testes).
+    /// (TouchZone: metade esquerda dirige, metade direita acelera/freia), inclinação do celular (opcional, com zona morta e filtro) e entrada virtual (testes).
+    /// A direção sai crua (teclado vale -1, 0 ou 1): quem a rampa e a molda pela velocidade é o ArcadeBikeController (ver Pilotagem).
     /// </summary>
     public sealed class BikeInput : MonoBehaviour
     {
         /// <summary>Inclinação (em g, na horizontal do aparelho) que equivale a esterçar tudo.</summary>
         private const float TiltFullScale = 0.4f;
 
-        private const float TiltDeadZone = 0.05f;
+        /// <summary>Zona morta da inclinação (fração do fundo de curso): tremida da mão não esterça.</summary>
+        private const float TiltDeadZone = 0.12f;
+
+        /// <summary>Suavização do acelerômetro (por segundo): filtra o tremor sem atrasar a direção de forma perceptível.</summary>
+        private const float TiltSmoothing = 14f;
 
         private float _keySteer;
         private float _keyGas;
@@ -22,6 +27,7 @@ namespace Entregador.Game
         private float _padGas;
         private float _padBrake;
         private float _tilt;
+        private float _tiltRaw;
 
         private float _virtualSteer;
         private float _virtualGas;
@@ -106,6 +112,7 @@ namespace Entregador.Game
             if (!TiltSteering || Accelerometer.current == null)
             {
                 _tilt = 0f;
+                _tiltRaw = 0f;
 
                 return;
             }
@@ -118,8 +125,8 @@ namespace Entregador.Game
             // Celular na horizontal, segurado como um guidão: a inclinação aparece no eixo curto do aparelho (y).
             Vector3 g = Accelerometer.current.acceleration.ReadValue();
             float side = Screen.orientation == ScreenOrientation.LandscapeRight ? -g.y : g.y;
-            float value = Mathf.Abs(side) < TiltDeadZone ? 0f : side;
-            _tilt = Mathf.Clamp(value / TiltFullScale, -1f, 1f);
+            _tiltRaw = Mathf.Lerp(_tiltRaw, Mathf.Clamp(side / TiltFullScale, -1f, 1f), 1f - Mathf.Exp(-TiltSmoothing * Time.deltaTime));
+            _tilt = Pilotagem.ZonaMorta(_tiltRaw, TiltDeadZone);
         }
     }
 }
